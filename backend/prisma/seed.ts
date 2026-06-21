@@ -8,7 +8,6 @@ const adapter = new PrismaBetterSqlite3({
 });
 
 const prisma = new PrismaClient({ adapter });
-
 const sampleNotes = [
   {
     title: "微積分期中考重點整理",

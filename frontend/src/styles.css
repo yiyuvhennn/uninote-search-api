@@ -148,9 +148,9 @@ textarea:focus {
 }
 
 .primary-btn {
-  background: #4263eb;
-  border-color: #4263eb;
-  color: white;
+  /* background: #4263eb; */
+  /* border-color: #4263eb; */
+  color: #000;
   font-weight: 700;
 }
 
@@ -297,6 +297,7 @@ textarea:focus {
 
 .search-card-content {
   display: -webkit-box;
+  line-clamp: 3;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
