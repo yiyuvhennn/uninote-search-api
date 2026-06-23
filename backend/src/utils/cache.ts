@@ -5,7 +5,7 @@ type CacheItem<T> = {
 
 const cache = new Map<string, CacheItem<unknown>>();
 
-export function getCache<T>(key: string): T | null {
+export function getCache<T = unknown>(key: string): T | null {
   const item = cache.get(key);
 
   if (!item) {
@@ -20,7 +20,11 @@ export function getCache<T>(key: string): T | null {
   return item.data as T;
 }
 
-export function setCache<T>(key: string, data: T, ttlSeconds = 60) {
+export function setCache<T = unknown>(
+  key: string,
+  data: T,
+  ttlSeconds = 60
+) {
   cache.set(key, {
     data,
     expiresAt: Date.now() + ttlSeconds * 1000,

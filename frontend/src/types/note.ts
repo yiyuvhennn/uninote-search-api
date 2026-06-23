@@ -23,14 +23,14 @@ export interface Note {
   title: string;
   description?: string | null;
   content?: string | null;
-  fileUrl: string;
-  course: string;
+  fileUrl?: string | null;
+  course?: string | null;
   category?: string | null;
-  views: number;
-  likes: number;
-  createdAt: string;
-  updatedAt: string;
-  authorId: number;
+  views?: number;
+  likes?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  authorId?: number;
   author?: Author;
   tags?: Tag[];
   favorites?: unknown[];
@@ -40,10 +40,10 @@ export interface Note {
 }
 
 export interface SearchMeta {
-  q: string;
-  course: string;
-  category: string;
-  tag: string;
+  q?: string;
+  course?: string;
+  category?: string;
+  tag?: string;
   sort: "relevance" | "latest" | "popular";
   page: number;
   pageSize: number;
