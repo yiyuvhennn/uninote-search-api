@@ -11,8 +11,14 @@ export interface Tag {
 
 export interface ScoreDetail {
   titleMatch: number;
+  courseMatch: number;
+  categoryMatch: number;
+  tagMatch: number;
   descriptionMatch: number;
   contentMatch: number;
+
+  relevance: number;
+  quality: number;
   popularity: number;
   recency: number;
   total: number;
@@ -23,14 +29,14 @@ export interface Note {
   title: string;
   description?: string | null;
   content?: string | null;
-  fileUrl?: string | null;
-  course?: string | null;
+  fileUrl: string;
+  course: string;
   category?: string | null;
-  views?: number;
-  likes?: number;
-  createdAt?: string;
-  updatedAt?: string;
-  authorId?: number;
+  views: number;
+  likes: number;
+  createdAt: string;
+  updatedAt: string;
+  authorId: number;
   author?: Author;
   tags?: Tag[];
   favorites?: unknown[];
@@ -40,16 +46,17 @@ export interface Note {
 }
 
 export interface SearchMeta {
-  q?: string;
-  course?: string;
-  category?: string;
-  tag?: string;
+  q: string;
+  course: string;
+  category: string;
+  tag: string;
   sort: "relevance" | "latest" | "popular";
   page: number;
   pageSize: number;
   total: number;
   totalPages: number;
   cache: "hit" | "miss";
+  candidateLimit?: number;
 }
 
 export interface SearchResponse {

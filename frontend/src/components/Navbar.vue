@@ -1,80 +1,75 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { useRouter } from "vue-router";
+import { computed, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
 const router = useRouter();
+const route = useRoute();
+const isOpen = ref(false);
 
 const isLoggedIn = computed(() => Boolean(localStorage.getItem("token")));
 
 function handleLogout() {
   localStorage.removeItem("token");
+  isOpen.value = false;
   router.push("/login");
+}
+
+function closeMenu() {
+  isOpen.value = false;
 }
 </script>
 
 <template>
-  <header class="navbar">
-    <router-link to="/" class="navbar-brand" aria-label="uniNote home">
-      <span class="brand-mark">uN</span>
-
-      <div>
+  <header class="site-nav">
+    <router-link class="brand" to="/" @click="closeMenu">
+      <span class="brand-icon">uN</span>
+      <span class="brand-text">
         <strong>uniNote</strong>
-        <small>Search API MVP</small>
-      </div>
+        <small>search intelligence</small>
+      </span>
     </router-link>
 
-    <nav class="navbar-links" aria-label="Primary navigation">
-      <router-link to="/" class="navbar-link">首頁</router-link>
-      <router-link v-if="isLoggedIn" to="/notes" class="navbar-link">筆記列表</router-link>
-      <router-link v-if="isLoggedIn" to="/search" class="navbar-link">搜尋系統</router-link>
-      <router-link v-if="isLoggedIn" to="/favorites" class="navbar-link">我的收藏</router-link>
-      <router-link v-if="isLoggedIn" to="/create" class="navbar-link">新增筆記</router-link>
+    <button class="menu-button" type="button" @click="isOpen = !isOpen">
+      {{ isOpen ? "關閉" : "選單" }}
+    </button>
+
+    <nav :class="['nav-links', { open: isOpen }]">
+      <router-link to="/" class="nav-link" @click="closeMenu">首頁</router-link>
+      <router-link v-if="isLoggedIn" to="/search" class="nav-link feature" @click="closeMenu">搜尋艙</router-link>
+      <router-link v-if="isLoggedIn" to="/notes" class="nav-link" @click="closeMenu">筆記庫</router-link>
+      <router-link v-if="isLoggedIn" to="/favorites" class="nav-link" @click="closeMenu">收藏</router-link>
+      <router-link v-if="isLoggedIn" to="/create" class="nav-link create" @click="closeMenu">新增</router-link>
     </nav>
 
-    <div class="navbar-actions">
-      <span v-if="isLoggedIn" class="status-pill">
-        <i></i>
-        Online
-      </span>
-
-      <router-link v-if="!isLoggedIn" to="/login" class="login-link">
-        登入
-      </router-link>
-
-      <router-link v-if="!isLoggedIn" to="/register" class="signup-link">
-        建立帳號
-      </router-link>
-
-      <button
-        v-if="isLoggedIn"
-        type="button"
-        class="logout-btn"
-        @click="handleLogout"
-      >
-        登出
-      </button>
+    <div class="nav-actions">
+      <span v-if="isLoggedIn" class="route-chip">{{ route.name || 'Workspace' }}</span>
+      <button v-if="isLoggedIn" type="button" class="logout" @click="handleLogout">登出</button>
+      <router-link v-else to="/login" class="login-link">登入</router-link>
     </div>
   </header>
 </template>
 
 <style scoped>
-.navbar {
+.site-nav {
   position: sticky;
-  top: 0;
-  z-index: 50;
-  min-height: 76px;
-  padding: 0 34px;
+  top: 16px;
+  z-index: 90;
+  width: min(1220px, calc(100% - 32px));
+  min-height: 70px;
+  margin: 16px auto 0;
+  padding: 10px 12px 10px 14px;
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 28px;
-  border-bottom: 1px solid rgba(203, 213, 225, 0.78);
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
-  backdrop-filter: blur(18px);
+  gap: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.11);
+  backdrop-filter: blur(24px);
 }
 
-.navbar-brand {
+.brand {
   display: inline-flex;
   align-items: center;
   gap: 12px;
@@ -82,156 +77,114 @@ function handleLogout() {
   text-decoration: none;
 }
 
-.brand-mark {
+.brand-icon {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 15px;
-  color: white;
-  background: linear-gradient(135deg, #4263eb, #7c3aed);
+  width: 48px;
+  height: 48px;
+  border-radius: 18px;
+  color: #06111f;
+  background:
+    radial-gradient(circle at 20% 15%, white 0 20%, transparent 21%),
+    linear-gradient(135deg, #a3e635, #22d3ee 45%, #7c3aed);
   font-size: 15px;
-  font-weight: 950;
-  letter-spacing: -0.05em;
-  box-shadow: 0 12px 26px rgba(66, 99, 235, 0.28);
-}
-
-.navbar-brand strong {
-  display: block;
-  color: #111827;
-  font-size: 22px;
-  font-weight: 950;
-  line-height: 1;
+  font-weight: 1000;
   letter-spacing: -0.06em;
+  box-shadow: 0 18px 38px rgba(34, 211, 238, 0.22);
 }
 
-.navbar-brand small {
+.brand-text strong {
   display: block;
-  margin-top: 4px;
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 1000;
+  letter-spacing: -0.075em;
+}
+
+.brand-text small {
+  display: block;
+  margin-top: 5px;
   color: #64748b;
-  font-size: 11px;
-  font-weight: 850;
-  letter-spacing: 0.04em;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.navbar-links {
+.nav-links {
   display: flex;
-  align-items: center;
   justify-content: center;
   gap: 6px;
 }
 
-.navbar-link {
-  padding: 10px 13px;
+.nav-link {
+  position: relative;
+  padding: 11px 14px;
   border-radius: 999px;
-  color: #64748b;
+  color: #475569;
   text-decoration: none;
   font-size: 14px;
-  font-weight: 850;
-  transition: 0.18s ease;
+  font-weight: 950;
+  transition: 0.2s ease;
 }
 
-.navbar-link:hover {
-  color: #172033;
-  background: #eef2ff;
-}
+.nav-link:hover { background: rgba(241, 245, 249, 0.92); color: #0f172a; }
+.nav-link.router-link-active { color: white; background: #111827; box-shadow: 0 16px 34px rgba(15, 23, 42, 0.18); }
+.nav-link.feature.router-link-active { background: linear-gradient(135deg, #3867ff, #7c3aed); }
+.nav-link.create { color: #0f766e; background: rgba(204, 251, 241, 0.72); }
 
-.navbar-link.router-link-exact-active {
-  color: white;
-  background: linear-gradient(135deg, #4263eb, #7c3aed);
-  box-shadow: 0 12px 24px rgba(66, 99, 235, 0.2);
-}
-
-.navbar-actions {
+.nav-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 10px;
 }
 
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 11px;
-  border: 1px solid #dbeafe;
+.route-chip {
+  padding: 9px 12px;
   border-radius: 999px;
-  color: #2563eb;
-  background: #eff6ff;
+  color: #3867ff;
+  background: rgba(239, 246, 255, 0.92);
+  border: 1px solid rgba(147, 197, 253, 0.4);
   font-size: 12px;
-  font-weight: 950;
+  font-weight: 1000;
 }
 
-.status-pill i {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: #22c55e;
-  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.18);
-}
-
+.logout,
 .login-link,
-.signup-link,
-.logout-btn {
-  min-height: 40px;
-  padding: 0 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  font-size: 14px;
-  font-weight: 900;
-  text-decoration: none;
-}
-
-.login-link,
-.logout-btn {
+.menu-button {
   border: 0;
-  color: #334155;
-  background: white;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
-}
-
-.signup-link {
-  color: white;
-  background: linear-gradient(135deg, #4263eb, #7c3aed);
-  box-shadow: 0 12px 24px rgba(66, 99, 235, 0.22);
-}
-
-.logout-btn {
-  cursor: pointer;
-  transition: 0.18s ease;
-}
-
-.logout-btn:hover {
+  border-radius: 999px;
+  padding: 11px 14px;
   color: white;
   background: #111827;
-  transform: translateY(-1px);
+  font-size: 14px;
+  font-weight: 950;
+  text-decoration: none;
+  transition: 0.2s ease;
 }
 
-@media (max-width: 1080px) {
-  .navbar {
-    grid-template-columns: 1fr;
-    gap: 16px;
-    padding: 18px;
-  }
+.logout:hover,
+.login-link:hover,
+.menu-button:hover { transform: translateY(-1px); background: #3867ff; }
+.menu-button { display: none; }
 
-  .navbar-links,
-  .navbar-actions {
+@media (max-width: 920px) {
+  .site-nav { grid-template-columns: 1fr auto; }
+  .menu-button { display: inline-flex; justify-content: center; }
+  .nav-links {
+    display: none;
+    grid-column: 1 / -1;
     justify-content: flex-start;
     flex-wrap: wrap;
+    padding-top: 8px;
   }
+  .nav-links.open { display: flex; }
+  .nav-actions { grid-column: 1 / -1; justify-content: flex-start; }
 }
 
-@media (max-width: 560px) {
-  .status-pill {
-    display: none;
-  }
-
-  .navbar-link {
-    padding: 9px 11px;
-    font-size: 13px;
-  }
+@media (max-width: 520px) {
+  .site-nav { top: 8px; width: calc(100% - 16px); border-radius: 22px; }
+  .brand-text small, .route-chip { display: none; }
 }
 </style>

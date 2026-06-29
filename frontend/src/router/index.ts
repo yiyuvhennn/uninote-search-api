@@ -8,73 +8,33 @@ import FavoritesPage from "../pages/FavoritesPage.vue";
 import CreateNotePage from "../pages/CreateNotePage.vue";
 import SearchPage from "../pages/SearchPage.vue";
 
+const protectedPages = ["/notes", "/search", "/favorites", "/create"];
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    {
-      path: "/",
-      name: "home",
-      component: HomePage,
-    },
-    {
-      path: "/login",
-      name: "login",
-      component: LoginPage,
-    },
-    {
-      path: "/register",
-      name: "register",
-      component: RegisterPage,
-    },
-    {
-      path: "/search",
-      name: "search",
-      component: SearchPage,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: "/notes",
-      name: "notes",
-      component: NotesPage,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: "/notes/:id",
-      name: "note-detail",
-      component: NoteDetailPage,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: "/favorites",
-      name: "favorites",
-      component: FavoritesPage,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: "/create",
-      name: "create-note",
-      component: CreateNotePage,
-      meta: { requiresAuth: true },
-    },
-    {
-      path: "/:pathMatch(.*)*",
-      redirect: "/",
-    },
+    { path: "/", component: HomePage },
+    { path: "/login", component: LoginPage, meta: { layout: "auth", guestOnly: true } },
+    { path: "/register", component: RegisterPage, meta: { layout: "auth", guestOnly: true } },
+    { path: "/search", component: SearchPage, meta: { requiresAuth: true } },
+    { path: "/notes", component: NotesPage, meta: { requiresAuth: true } },
+    { path: "/notes/:id", component: NoteDetailPage, meta: { requiresAuth: true } },
+    { path: "/favorites", component: FavoritesPage, meta: { requiresAuth: true } },
+    { path: "/create", component: CreateNotePage, meta: { requiresAuth: true } },
+    { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
 });
 
 router.beforeEach((to) => {
   const token = localStorage.getItem("token");
+  const needsAuth = Boolean(to.meta.requiresAuth) || protectedPages.some((path) => to.path.startsWith(path));
 
-  if (to.meta.requiresAuth && !token) {
-    return {
-      path: "/login",
-      query: { redirect: to.fullPath },
-    };
+  if (needsAuth && !token) {
+    return { path: "/login", query: { redirect: to.fullPath } };
   }
 
-  if ((to.path === "/login" || to.path === "/register") && token) {
-    return "/notes";
+  if (to.meta.guestOnly && token) {
+    return { path: "/search" };
   }
 
   return true;

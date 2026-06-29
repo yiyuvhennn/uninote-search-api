@@ -17,32 +17,26 @@ const emit = defineEmits<{
 const isFavorited = ref(props.initialFavorited ?? false);
 const actionLoading = ref(false);
 
-const favoriteCountText = computed(() => {
-  const count = props.note.favoriteCount ?? props.note.favorites?.length ?? 0;
-  return count.toString();
+const accentClass = computed(() => {
+  const list = ["accent-blue", "accent-lime", "accent-orange", "accent-pink", "accent-cyan"];
+  return list[props.note.id % list.length];
 });
 
-const updatedText = computed(() => {
-  if (!props.note.updatedAt && !props.note.createdAt) return "尚無日期";
-  const date = new Date(props.note.updatedAt || props.note.createdAt || "");
-  if (Number.isNaN(date.getTime())) return "尚無日期";
-  return new Intl.DateTimeFormat("zh-TW", {
-    month: "short",
-    day: "numeric",
-  }).format(date);
-});
+const tagList = computed(() => props.note.tags || []);
+const favoriteTotal = computed(() => props.note.favoriteCount ?? props.note.favorites?.length ?? 0);
+
+function formatDate(date?: string) {
+  if (!date) return "未記錄";
+  return new Intl.DateTimeFormat("zh-TW", { month: "short", day: "numeric" }).format(new Date(date));
+}
 
 async function toggleFavorite() {
   if (actionLoading.value) return;
-
   actionLoading.value = true;
 
   try {
     if (!isFavorited.value) {
-      await api.post("/favorites", {
-        noteId: props.note.id,
-      });
-
+      await api.post("/favorites", { noteId: props.note.id });
       isFavorited.value = true;
     } else {
       await api.delete(`/favorites/${props.note.id}`);
@@ -51,7 +45,7 @@ async function toggleFavorite() {
     }
   } catch (error) {
     console.error("收藏操作失敗", error);
-    window.alert("收藏操作失敗，請稍後再試");
+    alert("收藏操作失敗，請稍後再試");
   } finally {
     actionLoading.value = false;
   }
@@ -59,7 +53,6 @@ async function toggleFavorite() {
 
 async function handleDelete() {
   const confirmed = window.confirm("確定要刪除這篇筆記嗎？這個動作無法復原。");
-
   if (!confirmed) return;
 
   actionLoading.value = true;
@@ -69,7 +62,7 @@ async function handleDelete() {
     emit("deleted", props.note.id);
   } catch (error) {
     console.error("刪除筆記失敗", error);
-    window.alert("刪除失敗，請稍後再試");
+    alert("刪除失敗，請稍後再試");
   } finally {
     actionLoading.value = false;
   }
@@ -77,260 +70,153 @@ async function handleDelete() {
 </script>
 
 <template>
-  <article class="note-card">
-    <div class="card-top">
-      <span class="course-pill">
-        {{ props.note.course || "未分類課程" }}
-      </span>
+  <article :class="['note-card', accentClass]">
+    <div class="note-card__pin"></div>
+
+    <header class="note-card__top">
+      <div>
+        <span class="course">{{ note.course || "未分類課程" }}</span>
+        <span class="date">{{ formatDate(note.updatedAt || note.createdAt) }}</span>
+      </div>
 
       <button
         type="button"
-        class="favorite-btn"
-        :class="{ active: isFavorited }"
+        :class="['favorite', { active: isFavorited }]"
         :disabled="actionLoading"
         @click="toggleFavorite"
       >
-        {{ isFavorited ? "已收藏" : "收藏" }}
+        {{ isFavorited ? "收藏中" : "收藏" }}
       </button>
-    </div>
+    </header>
 
-    <router-link :to="`/notes/${props.note.id}`" class="note-link">
-      <h3>{{ props.note.title }}</h3>
+    <router-link :to="`/notes/${note.id}`" class="title-link">
+      <h3>{{ note.title }}</h3>
     </router-link>
 
-    <p class="description">
-      {{ props.note.description || "這篇筆記尚未提供描述內容。" }}
-    </p>
+    <p class="description">{{ note.description || "這篇筆記尚未補上描述，可以從內容或檔案連結進一步查看。" }}</p>
 
-    <div class="meta-grid">
-      <div>
-        <span>作者</span>
-        <strong>{{ props.note.author?.name || "未知作者" }}</strong>
-      </div>
-
-      <div>
-        <span>更新</span>
-        <strong>{{ updatedText }}</strong>
-      </div>
-
-      <div>
-        <span>觀看</span>
-        <strong>{{ props.note.views ?? 0 }}</strong>
-      </div>
-
-      <div>
-        <span>收藏</span>
-        <strong>{{ favoriteCountText }}</strong>
-      </div>
+    <div class="tag-cloud" v-if="tagList.length">
+      <span v-for="tag in tagList.slice(0, 4)" :key="tag.id">#{{ tag.name }}</span>
     </div>
 
-    <div v-if="props.note.tags?.length" class="tag-row">
-      <span v-for="tag in props.note.tags.slice(0, 4)" :key="tag.id">
-        #{{ tag.name }}
-      </span>
+    <div class="mini-metrics">
+      <div><span>Views</span><strong>{{ note.views ?? 0 }}</strong></div>
+      <div><span>Likes</span><strong>{{ note.likes ?? 0 }}</strong></div>
+      <div><span>Fav</span><strong>{{ favoriteTotal }}</strong></div>
     </div>
 
-    <div class="card-actions">
-      <router-link :to="`/notes/${props.note.id}`" class="detail-btn">
-        查看詳情
-      </router-link>
-
-      <a
-        v-if="props.note.fileUrl"
-        :href="props.note.fileUrl"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="file-btn"
-      >
-        查看檔案
-      </a>
-
-      <button
-        v-if="props.showDeleteButton"
-        type="button"
-        class="delete-btn"
-        :disabled="actionLoading"
-        @click="handleDelete"
-      >
-        刪除
-      </button>
-    </div>
+    <footer class="note-card__actions">
+      <router-link :to="`/notes/${note.id}`" class="open-action">閱讀</router-link>
+      <a v-if="note.fileUrl" :href="note.fileUrl" target="_blank" class="file-action">檔案</a>
+      <button v-if="showDeleteButton" type="button" class="delete-action" :disabled="actionLoading" @click="handleDelete">刪除</button>
+    </footer>
   </article>
 </template>
 
 <style scoped>
 .note-card {
   position: relative;
-  min-height: 286px;
-  padding: 22px;
+  min-height: 310px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(203, 213, 225, 0.86);
-  border-radius: 28px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 32px;
   background:
-    radial-gradient(circle at top right, rgba(66, 99, 235, 0.1), transparent 30%),
-    rgba(255, 255, 255, 0.91);
-  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.07);
-  transition: 0.22s ease;
+    linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.72)),
+    var(--accent-bg);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.1);
+  overflow: hidden;
+  transition: 0.24s ease;
 }
 
 .note-card:hover {
-  transform: translateY(-3px);
-  border-color: #bfdbfe;
-  box-shadow: 0 24px 52px rgba(15, 23, 42, 0.11);
+  transform: translateY(-6px) rotate(-0.2deg);
+  box-shadow: 0 34px 80px rgba(15, 23, 42, 0.16);
 }
 
-.card-top {
+.note-card::after {
+  content: "";
+  position: absolute;
+  width: 160px;
+  height: 160px;
+  right: -70px;
+  top: -70px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.16;
+}
+
+.note-card__pin {
+  position: absolute;
+  top: 16px;
+  right: 22px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.accent-blue { --accent: #3867ff; --accent-bg: #eff6ff; }
+.accent-lime { --accent: #84cc16; --accent-bg: #f7fee7; }
+.accent-orange { --accent: #fb923c; --accent-bg: #fff7ed; }
+.accent-pink { --accent: #ec4899; --accent-bg: #fdf2f8; }
+.accent-cyan { --accent: #06b6d4; --accent-bg: #ecfeff; }
+
+.note-card__top {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
-  align-items: center;
   gap: 12px;
-  margin-bottom: 18px;
 }
 
-.course-pill {
-  max-width: 70%;
-  padding: 8px 12px;
-  border-radius: 999px;
-  color: #4263eb;
-  background: #eef2ff;
-  font-size: 12px;
-  font-weight: 950;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.favorite-btn {
-  border: 0;
-  padding: 8px 11px;
-  border-radius: 999px;
-  color: #64748b;
-  background: #f8fafc;
-  font-size: 12px;
-  font-weight: 900;
-  cursor: pointer;
-  transition: 0.18s ease;
-}
-
-.favorite-btn.active {
-  color: #b45309;
-  background: #fffbeb;
-}
-
-.note-link {
-  color: inherit;
-  text-decoration: none;
-}
-
-.note-link h3 {
-  margin: 0;
-  color: #111827;
-  font-size: 24px;
-  line-height: 1.25;
-  letter-spacing: -0.045em;
-}
-
-.note-link:hover h3 {
-  color: #4263eb;
-}
-
-.description {
-  flex: 1;
-  margin: 12px 0 20px;
-  color: #64748b;
-  line-height: 1.75;
-}
-
-.meta-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.meta-grid div {
-  padding: 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  background: #f8fafc;
-}
-
-.meta-grid span {
-  display: block;
-  margin-bottom: 5px;
-  color: #94a3b8;
-  font-size: 11px;
-  font-weight: 950;
-  letter-spacing: 0.08em;
-}
-
-.meta-grid strong {
-  color: #334155;
-  font-size: 13px;
-}
-
-.tag-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.tag-row span {
-  padding: 6px 9px;
-  border-radius: 999px;
-  color: #475569;
-  background: #f1f5f9;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.detail-btn,
-.file-btn,
-.delete-btn {
-  min-height: 38px;
-  padding: 0 13px;
+.course,
+.date {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  margin-right: 7px;
+  padding: 7px 10px;
   border-radius: 999px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 950;
-  text-decoration: none;
-  cursor: pointer;
 }
 
-.detail-btn {
-  color: white;
-  background: linear-gradient(135deg, #4263eb, #7c3aed);
-}
+.course { color: white; background: var(--accent); }
+.date { color: #475569; background: rgba(255, 255, 255, 0.78); border: 1px solid rgba(148, 163, 184, 0.22); }
 
-.file-btn {
-  color: #334155;
-  background: #f1f5f9;
-}
-
-.delete-btn {
+.favorite {
+  position: relative;
+  z-index: 1;
   border: 0;
-  color: #b91c1c;
-  background: #fef2f2;
+  border-radius: 999px;
+  padding: 8px 11px;
+  color: #475569;
+  background: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  font-weight: 950;
 }
+.favorite.active { color: #854d0e; background: #fef3c7; }
 
-button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
+.title-link { position: relative; z-index: 1; margin-top: 26px; color: inherit; text-decoration: none; }
+h3 { margin: 0; color: #0f172a; font-size: 27px; line-height: 1.18; letter-spacing: -0.055em; }
+.title-link:hover h3 { color: var(--accent); }
+.description { position: relative; z-index: 1; flex: 1; margin: 14px 0 18px; color: #5b6678; line-height: 1.78; }
 
-@media (max-width: 720px) {
-  .meta-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
+.tag-cloud { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.tag-cloud span { padding: 6px 9px; border-radius: 999px; color: #334155; background: rgba(255, 255, 255, 0.76); font-size: 12px; font-weight: 900; }
+
+.mini-metrics { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 18px; }
+.mini-metrics div { padding: 12px; border-radius: 18px; background: rgba(255, 255, 255, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); }
+.mini-metrics span { display: block; color: #94a3b8; font-size: 10px; font-weight: 1000; letter-spacing: 0.1em; text-transform: uppercase; }
+.mini-metrics strong { display: block; margin-top: 3px; color: #111827; font-size: 20px; }
+
+.note-card__actions { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 9px; }
+.open-action,
+.file-action,
+.delete-action { min-height: 38px; padding: 0 13px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 999px; font-size: 13px; font-weight: 950; text-decoration: none; }
+.open-action { color: white; background: #111827; }
+.file-action { color: #111827; background: rgba(255, 255, 255, 0.82); }
+.delete-action { color: #be123c; background: #fff1f2; }
 </style>

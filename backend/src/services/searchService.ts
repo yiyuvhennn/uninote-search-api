@@ -1,144 +1,314 @@
-/// searchService為真正搜尋大腦
-// 1. 整理搜尋參數
-// 2. 產生 cache key
-// 3. 檢查快取有沒有資料
-// 4. 用 Prisma 查 Note
-// 5. 計算每篇筆記的 score
-// 6. 根據 sort 排序
-// 7. 做分頁
-// 8. 回傳 data + meta
-// 9. 把結果存進 cache 60 秒
-
 import { prisma } from "../lib/prisma";
 import { getCache, setCache } from "../utils/cache";
-import { calculateNoteScore } from "../utils/ranking";
+import { calculateNoteScore, type ScoreDetail } from "../utils/ranking";
 
-//SearchParams 型別 : 搜尋功能可以接收哪些參數？
+type SearchSort = "relevance" | "latest" | "popular";
+
 type SearchParams = {
-  q?: string; //關鍵字
-  course?: string; //課程
-  category?: string; //分類
-  tag?: string; //標籤
-  sort?: "relevance" | "latest" | "popular";
-  //排序方式只能是三種 relevance：相關度排序 | latest：最新排序 | popular：熱門排序
-  //sort 不能亂填，只能是這三個字串其中一個。
-
-  page?: number; //代表第幾頁
-  pageSize?: number; //代表一頁幾筆資料
+  q?: string;
+  course?: string;
+  category?: string;
+  tag?: string;
+  sort?: SearchSort;
+  page?: number;
+  pageSize?: number;
 };
 
-//toPositiveNumber：把頁數整理成正常數字
-function toPositiveNumber(value: unknown, fallback: number) { //value：要被轉成數字的值
-  //unknown 代表：可能是字串、數字、undefined、null。               fallback：如果轉換失敗，要使用的預設值
+type SearchMeta = {
+  q: string;
+  course: string;
+  category: string;
+  tag: string;
+  sort: SearchSort;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  cache: "hit" | "miss";
+  candidateLimit: number;
+};
+
+type SearchResult = {
+  data: Array<{
+    id: number;
+    title: string;
+    description: string | null;
+    content: string | null;
+    fileUrl: string;
+    course: string;
+    category: string | null;
+    views: number;
+    likes: number;
+    createdAt: Date;
+    updatedAt: Date;
+    authorId: number;
+    author: {
+      id: number;
+      name: string;
+      email: string;
+    };
+    tags: Array<{
+      id: number;
+      name: string;
+    }>;
+    favorites: unknown[];
+    favoriteCount: number;
+    score: number;
+    scoreDetail: ScoreDetail;
+  }>;
+  meta: SearchMeta;
+};
+
+const CANDIDATE_LIMIT = 1000;
+
+const synonymMap: Record<string, string[]> = {
+  自控: ["自動控制", "控制系統"],
+  控制: ["自動控制", "控制系統", "線性控制"],
+  熱流: ["熱力學", "流體力學", "熱傳學"],
+  熱傳: ["熱傳學", "Heat Transfer"],
+  流力: ["流體力學", "Fluid Mechanics"],
+  材力: ["材料力學", "Mechanics of Materials"],
+  工數: ["工程數學", "Engineering Mathematics"],
+  微積分: ["Calculus"],
+  普物: ["普通物理", "General Physics"],
+  製造: ["機械製造", "Mechanical Manufacturing"],
+  機設: ["機械設計", "Machine Design"],
+  機動: ["機動學", "Mechanism"],
+  考古: ["考古題", "歷屆試題"],
+  期中: ["期中考", "考試整理"],
+  期末: ["期末考", "考試整理"],
+};
+
+function toPositiveNumber(value: unknown, fallback: number) {
   const numberValue = Number(value);
 
-  //檢查：numberValue 是不是合法數字？numberValue 是否大於 0？
-  if (!Number.isFinite(numberValue) || numberValue <= 0) { 
-    return fallback; //如果不是合法數字，或小於等於 0，就回傳預設值。
+  if (!Number.isFinite(numberValue) || numberValue <= 0) {
+    return fallback;
   }
-  return Math.floor(numberValue);//如果是合法數字，就無條件捨去小數。
+
+  return Math.floor(numberValue);
 }
-//normalizeParams：整理搜尋參數 : 把前端傳來的搜尋條件整理乾淨
-function normalizeParams(params: SearchParams) { 
+
+function normalizeText(value?: string) {
+  return (value || "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeSort(sort?: SearchSort): SearchSort {
+  if (sort === "latest" || sort === "popular" || sort === "relevance") {
+    return sort;
+  }
+
+  return "relevance";
+}
+
+function normalizeParams(params: SearchParams) {
   return {
-    q: params.q?.trim() || "", //如果 q 有值，就去掉前後空白。如果 q 沒有值，就變成空字串。
-    course: params.course?.trim() || "",
-    category: params.category?.trim() || "",
-    tag: params.tag?.trim() || "",
-    sort: params.sort || "relevance", //如果前端沒有傳排序方式，就預設：relevance
-    page: toPositiveNumber(params.page, 1), //把 page 轉成正整數。如果沒有傳或傳錯，就預設第 1 頁。
-    pageSize: Math.min(toPositiveNumber(params.pageSize, 10), 50), //pageSize 預設 10。但最多不能超過 50。
+    q: normalizeText(params.q),
+    course: normalizeText(params.course),
+    category: normalizeText(params.category),
+    tag: normalizeText(params.tag),
+    sort: normalizeSort(params.sort),
+    page: toPositiveNumber(params.page, 1),
+    pageSize: Math.min(toPositiveNumber(params.pageSize, 12), 50),
   };
 }
 
-//searchNotes：主要搜尋函式
-//export 代表其他檔案可以使用它。 async 代表裡面會有非同步操作，也就是後面會查資料庫：
-export async function searchNotes(params: SearchParams) {
+/**
+ * Query Understanding 簡化版：
+ * 把使用者輸入的 query 加入同義詞。
+ *
+ * 例如：
+ * q = 自控
+ * 會同時搜尋：自控、自動控制、控制系統
+ */
+function expandQueryTerms(query: string) {
+  const normalizedQuery = normalizeText(query);
 
-  const normalized = normalizeParams(params); //整理參數
-  const cacheKey = `search:${JSON.stringify(normalized)}`; //產生 cache key
-  const cached = getCache(cacheKey); //讀取 cache
-  //如果 cache 命中，就直接回傳
+  if (!normalizedQuery) return [];
+
+  const terms = new Set<string>();
+  terms.add(normalizedQuery);
+
+  Object.entries(synonymMap).forEach(([key, values]) => {
+    if (normalizedQuery.includes(key)) {
+      terms.add(key);
+      values.forEach((value) => terms.add(value));
+    }
+
+    values.forEach((value) => {
+      if (normalizedQuery.includes(value)) {
+        terms.add(key);
+        values.forEach((item) => terms.add(item));
+      }
+    });
+  });
+
+  return Array.from(terms);
+}
+
+function buildKeywordWhere(queryTerms: string[]) {
+  if (queryTerms.length === 0) return {};
+
+  return {
+    OR: queryTerms.flatMap((term) => [
+      {
+        title: {
+          contains: term,
+        },
+      },
+      {
+        description: {
+          contains: term,
+        },
+      },
+      {
+        content: {
+          contains: term,
+        },
+      },
+      {
+        course: {
+          contains: term,
+        },
+      },
+      {
+        category: {
+          contains: term,
+        },
+      },
+      {
+        tags: {
+          some: {
+            tag: {
+              name: {
+                contains: term,
+              },
+            },
+          },
+        },
+      },
+    ]),
+  };
+}
+
+function buildFilterWhere(normalized: ReturnType<typeof normalizeParams>) {
+  return [
+    normalized.course
+      ? {
+          course: {
+            contains: normalized.course,
+          },
+        }
+      : {},
+    normalized.category
+      ? {
+          category: {
+            contains: normalized.category,
+          },
+        }
+      : {},
+    normalized.tag
+      ? {
+          tags: {
+            some: {
+              tag: {
+                name: {
+                  contains: normalized.tag,
+                },
+              },
+            },
+          },
+        }
+      : {},
+  ];
+}
+
+function buildRankingKeyword(normalized: ReturnType<typeof normalizeParams>) {
+  const parts = [
+    normalized.q,
+    normalized.course,
+    normalized.category,
+    normalized.tag,
+    ...expandQueryTerms(normalized.q),
+  ].filter(Boolean);
+
+  return Array.from(new Set(parts)).join(" ");
+}
+
+function getPopularValue(note: {
+  views: number;
+  likes: number;
+  favoriteCount: number;
+}) {
+  return note.views * 0.1 + note.likes * 0.5 + note.favoriteCount;
+}
+
+export async function searchNotes(params: SearchParams): Promise<SearchResult> {
+  const normalized = normalizeParams(params);
+  const queryTerms = expandQueryTerms(normalized.q);
+  const cacheKey = `search:${JSON.stringify({
+    ...normalized,
+    queryTerms,
+  })}`;
+
+  const cached = getCache<SearchResult>(cacheKey);
+
   if (cached) {
     return {
-      ...(cached as object),
+      ...cached,
       meta: {
-        ...(cached as any).meta,
+        ...cached.meta,
         cache: "hit",
       },
     };
-  };
-  //沒有 cache，就用 Prisma 查資料庫
+  }
+
+  /**
+   * Candidate Retrieval：
+   * 先從資料庫召回最多 1000 筆候選資料。
+   * 不直接對全資料庫做 ranking，避免資料量變大後變慢。
+   */
   const notes = await prisma.note.findMany({
     where: {
-      AND: [ //裡面的條件都要同時成立。
-
-        //如果 q 有值，就加入關鍵字搜尋條件。如果 q 沒有值，就給空物件，不限制關鍵字。
-        normalized.q
-          ? {
-              OR: [ //只要其中一個欄位有包含 q，就算符合。
-                { title: { contains: normalized.q } },
-                { description: { contains: normalized.q } },
-                { content: { contains: normalized.q } },
-                { course: { contains: normalized.q } },
-              ],
-            }
-          : {},
-        normalized.course //只找 course 包含「工程數學」的筆記
-          ? {
-              course: {
-                contains: normalized.course,
-              },
-            }
-          : {}, //如果沒有傳 course，就不限制課程。
-        normalized.category
-          ? {
-              category: {
-                contains: normalized.category,
-              },
-            }
-          : {},
-        normalized.tag
-          ? {
-              tags: {
-                some: {
-                  tag: { //Tag 的 name 裡面包含 normalized.tag。
-                    name: {
-                      contains: normalized.tag,
-                    },
-                  },
-                },
-              },
-            }
-          : {},
+      AND: [
+        buildKeywordWhere(queryTerms),
+        ...buildFilterWhere(normalized),
       ],
     },
-    include: { //include：順便查作者、標籤、收藏 : 查 Note 的時候，順便把相關資料一起查出來。
-      author: { //查作者資料，但只拿： id、name、email
+    include: {
+      author: {
         select: {
           id: true,
           name: true,
           email: true,
         },
       },
-      tags: { //查出這篇筆記的標籤。因為 Note 和 Tag 中間有 NoteTag，所以要 include 真正的 tag。
+      tags: {
         include: {
           tag: true,
         },
       },
       favorites: true,
     },
+    take: CANDIDATE_LIMIT,
+    orderBy: {
+      createdAt: "desc",
+    },
   });
 
+  const rankingKeyword = buildRankingKeyword(normalized);
+
   const scoredNotes = notes.map((note) => {
-    const scoreDetail = calculateNoteScore(note, normalized.q);
+    const scoreDetail = calculateNoteScore(note, rankingKeyword);
+    const tags = note.tags.map((item) => item.tag);
+    const favoriteCount = note.favorites.length;
 
     return {
       ...note,
+      tags,
+      favoriteCount,
       score: scoreDetail.total,
       scoreDetail,
-      favoriteCount: note.favorites.length,
-      tags: note.tags.map((item) => item.tag),
     };
   });
 
@@ -148,20 +318,19 @@ export async function searchNotes(params: SearchParams) {
     }
 
     if (normalized.sort === "popular") {
-      const aPopular = a.views * 0.1 + a.likes * 0.5 + a.favoriteCount;
-      const bPopular = b.views * 0.1 + b.likes * 0.5 + b.favoriteCount;
-      return bPopular - aPopular;
+      return getPopularValue(b) - getPopularValue(a);
     }
 
     return b.score - a.score;
   });
 
   const total = scoredNotes.length;
-  const totalPages = Math.ceil(total / normalized.pageSize) || 1;
-  const start = (normalized.page - 1) * normalized.pageSize;
+  const totalPages = Math.max(Math.ceil(total / normalized.pageSize), 1);
+  const safePage = Math.min(normalized.page, totalPages);
+  const start = (safePage - 1) * normalized.pageSize;
   const data = scoredNotes.slice(start, start + normalized.pageSize);
 
-  const result = {
+  const result: SearchResult = {
     data,
     meta: {
       q: normalized.q,
@@ -169,11 +338,12 @@ export async function searchNotes(params: SearchParams) {
       category: normalized.category,
       tag: normalized.tag,
       sort: normalized.sort,
-      page: normalized.page,
+      page: safePage,
       pageSize: normalized.pageSize,
       total,
       totalPages,
       cache: "miss",
+      candidateLimit: CANDIDATE_LIMIT,
     },
   };
 

@@ -1,72 +1,249 @@
-//第 3～11 行：定義「可以被算分的筆記」
+type PlainTag = {
+    id?: number;
+    name?: string | null;
+  };
+
+  type NoteTagRelation = {
+    tag?: {
+      id?: number;
+      name?: string | null;
+    } | null;
+  };
+type NoteTagLike = PlainTag | NoteTagRelation;
 
 type RankableNote = {
   title: string;
   description?: string | null;
   content?: string | null;
+  course?: string | null;
+  category?: string | null;
+  fileUrl?: string | null;
   views?: number | null;
   likes?: number | null;
   createdAt: Date | string;
   favorites?: unknown[];
+  tags?: NoteTagLike[];
 };
-
-//第 13～20 行：定義「分數明細」的格式
 
 export type ScoreDetail = {
   titleMatch: number;
+  courseMatch: number;
+  categoryMatch: number;
+  tagMatch: number;
   descriptionMatch: number;
   contentMatch: number;
+
+  relevance: number;
+  quality: number;
   popularity: number;
   recency: number;
   total: number;
 };
 
-//第 26～28 行：文字標準化函式
+function clamp(value: number, min = 0, max = 100) {
+  return Math.min(Math.max(value, min), max);
+}
 
 function normalizeText(text: string | null | undefined) {
-  return (text || "").toLowerCase().trim(); // .toLowerCase()自動轉小寫, .trim()：去掉前後空白
-};
+  return (text || "")
+    .toLowerCase()
+    .replace(/[｜|、，,。．.：:；;]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-// 第 32～39 行：判斷關鍵字有沒有命中
+function tokenize(keyword: string) {
+  return normalizeText(keyword)
+    .split(" ")
+    .map((word) => word.trim())
+    .filter(Boolean);
+}
 
-function countKeywordMatch(text: string | null | undefined, keyword: string) {
+function isPlainTag(item: NoteTagLike): item is PlainTag {
+  return "name" in item;
+}
+
+function isNoteTagRelation(item: NoteTagLike): item is NoteTagRelation {
+  return "tag" in item;
+}
+
+function getTagText(tags?: NoteTagLike[]) {
+  if (!tags || tags.length === 0) return "";
+
+  return tags
+    .map((item) => {
+      if (isPlainTag(item)) {
+        return item.name;
+      }
+
+      if (isNoteTagRelation(item)) {
+        return item.tag?.name;
+      }
+
+      return "";
+    })
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * 文字相關度分數：0 ~ 100
+ *
+ * 規則：
+ * 1. 完全相同：100
+ * 2. 整句包含：85
+ * 3. 拆詞後部分命中：依照命中比例給分，最高 70
+ */
+function textMatchScore(text: string | null | undefined, keyword: string) {
   const source = normalizeText(text);
   const target = normalizeText(keyword);
-  if (!source || !target) {
-    return 0;
-  }
-  return source.includes(target) ? 1 : 0;
-};
 
-//第 43～47 行：計算筆記新鮮度
+  if (!source || !target) return 0;
 
-function calculateRecency(createdAt: Date | string) {
+  if (source === target) return 100;
+  if (source.includes(target)) return 85;
+
+  const tokens = tokenize(target);
+
+  if (tokens.length === 0) return 0;
+
+  const matchedTokens = tokens.filter((token) => source.includes(token)).length;
+
+  return Math.round((matchedTokens / tokens.length) * 70);
+}
+
+/**
+ * 品質分數：0 ~ 100
+ *
+ * 這裡先用目前資料庫已有欄位做 MVP：
+ * - title 是否完整
+ * - description 是否完整
+ * - content 是否足夠
+ * - course/category 是否有填
+ * - 是否有 tag
+ * - 是否有 fileUrl
+ */
+function calculateQualityScore(note: RankableNote) {
+  let score = 0;
+
+  if (note.title && note.title.trim().length >= 6) score += 18;
+  if (note.description && note.description.trim().length >= 20) score += 18;
+  if (note.content && note.content.trim().length >= 120) score += 28;
+  if (note.course) score += 12;
+  if (note.category) score += 8;
+  if ((note.tags?.length || 0) > 0) score += 8;
+  if (note.fileUrl) score += 8;
+
+  return clamp(score);
+}
+
+/**
+ * 熱門度分數：0 ~ 100
+ *
+ * 使用 log1p 是為了避免 views / likes 太大時直接壓過相關性。
+ * 例如 1000 views 不應該是 10 views 的 100 倍重要。
+ */
+function calculatePopularityScore(note: RankableNote) {
+  const favoriteCount = note.favorites?.length || 0;
+  const views = note.views || 0;
+  const likes = note.likes || 0;
+
+  const viewScore = Math.log1p(views) * 10;
+  const likeScore = Math.log1p(likes) * 16;
+  const favoriteScore = Math.log1p(favoriteCount) * 20;
+
+  return clamp(viewScore + likeScore + favoriteScore);
+}
+
+/**
+ * 新鮮度分數：0 ~ 100
+ *
+ * 新資料加分，但不讓它壓過主要相關性。
+ */
+function calculateRecencyScore(createdAt: Date | string) {
   const createdTime = new Date(createdAt).getTime();
+
+  if (Number.isNaN(createdTime)) return 0;
+
   const daysOld = (Date.now() - createdTime) / (1000 * 60 * 60 * 24);
-  return Math.max(0, 30 - daysOld) / 30;
-};
 
-//第 51～72 行：主函式，真正計算筆記分數
+  if (daysOld <= 7) return 100;
+  if (daysOld <= 30) return 85;
+  if (daysOld <= 90) return 65;
+  if (daysOld <= 180) return 45;
+  if (daysOld <= 365) return 25;
 
-export function calculateNoteScore(note: RankableNote, keyword: string): ScoreDetail {
-  const titleMatch = countKeywordMatch(note.title, keyword); //計算'標題'有沒有命中關鍵字
-  const descriptionMatch = countKeywordMatch(note.description, keyword); //計算'描述'有沒有命中關鍵字
-  const contentMatch = countKeywordMatch(note.content, keyword); //計算'內容'有沒有命中關鍵字
-  const favoriteCount = note.favorites?.length || 0;//計算'收藏數'
-  const popularity = (note.views || 0) * 0.1 + (note.likes || 0) * 0.5 + favoriteCount * 1;//計算'熱門度'
-  const recency = calculateRecency(note.createdAt);//計算'新鮮度'
+  return 10;
+}
+
+/**
+ * calculateNoteScore
+ *
+ * 這是目前 Ranking 的核心。
+ *
+ * 設計邏輯：
+ * - relevance：搜尋相關性，最重要
+ * - quality：內容品質，避免空資料排太前面
+ * - popularity：使用者互動訊號
+ * - recency：新鮮度，避免舊資料長期霸榜
+ */
+export function calculateNoteScore(
+  note: RankableNote,
+  keyword: string
+): ScoreDetail {
+  const titleMatch = textMatchScore(note.title, keyword);
+  const courseMatch = textMatchScore(note.course, keyword);
+  const categoryMatch = textMatchScore(note.category, keyword);
+  const tagMatch = textMatchScore(getTagText(note.tags), keyword);
+  const descriptionMatch = textMatchScore(note.description, keyword);
+  const contentMatch = textMatchScore(note.content, keyword);
+
+  /**
+   * Relevance 內部權重：
+   * - title：標題最重要
+   * - tag：人工分類訊號很強
+   * - course：課程名稱對學習筆記很重要
+   * - category：分類輔助
+   * - description/content：補充判斷
+   */
+  const relevance = clamp(
+    titleMatch * 0.32 +
+      tagMatch * 0.2 +
+      courseMatch * 0.18 +
+      categoryMatch * 0.1 +
+      descriptionMatch * 0.1 +
+      contentMatch * 0.1
+  );
+
+  const quality = calculateQualityScore(note);
+  const popularity = calculatePopularityScore(note);
+  const recency = calculateRecencyScore(note.createdAt);
+
+  /**
+   * 總分權重：
+   * - relevance 最高，因為搜尋結果最重要的是相關性
+   * - quality 防止空內容或低品質資料排太前面
+   * - popularity 作為使用者行為訊號
+   * - recency 只做輔助，不讓新資料直接霸榜
+   */
   const total =
-    titleMatch * 5 +
-    descriptionMatch * 2 +
-    contentMatch * 2 +
-    popularity * 3 +
-    recency * 1;
+    relevance * 0.55 +
+    quality * 0.15 +
+    popularity * 0.2 +
+    recency * 0.1;
+
   return {
-    titleMatch,
-    descriptionMatch,
-    contentMatch,
+    titleMatch: Math.round(titleMatch),
+    courseMatch: Math.round(courseMatch),
+    categoryMatch: Math.round(categoryMatch),
+    tagMatch: Math.round(tagMatch),
+    descriptionMatch: Math.round(descriptionMatch),
+    contentMatch: Math.round(contentMatch),
+
+    relevance: Number(relevance.toFixed(2)),
+    quality: Number(quality.toFixed(2)),
     popularity: Number(popularity.toFixed(2)),
     recency: Number(recency.toFixed(2)),
     total: Number(total.toFixed(2)),
   };
-};
+}
