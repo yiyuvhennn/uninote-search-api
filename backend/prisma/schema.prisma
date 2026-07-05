@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -23,6 +24,7 @@ model Note {
   title       String
   description String?
   content     String?
+  searchText  String?
   fileUrl     String
   course      String
   category    String?

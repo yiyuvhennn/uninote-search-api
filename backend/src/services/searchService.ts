@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { getCache, setCache } from "../utils/cache";
 import { calculateNoteScore, type ScoreDetail } from "../utils/ranking";
+import { buildCjkNgrams } from "../utils/textProcessing";
 
 type SearchSort = "relevance" | "latest" | "popular";
 
@@ -34,6 +35,7 @@ type SearchResult = {
     title: string;
     description: string | null;
     content: string | null;
+    searchText: string | null;
     fileUrl: string;
     course: string;
     category: string | null;
@@ -60,6 +62,42 @@ type SearchResult = {
 };
 
 const CANDIDATE_LIMIT = 1000;
+
+const searchNoteInclude = {
+  author: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  },
+  tags: {
+    include: {
+      tag: true,
+    },
+  },
+  favorites: true,
+};
+
+type SearchNote = Omit<
+  SearchResult["data"][number],
+  "tags" | "favoriteCount" | "score" | "scoreDetail"
+> & {
+  tags: Array<{
+    tag: {
+      id: number;
+      name: string;
+    };
+  }>;
+  favorites: unknown[];
+};
+
+type ScoredNote = Omit<SearchNote, "tags"> & {
+  tags: SearchResult["data"][number]["tags"];
+  favoriteCount: number;
+  score: number;
+  scoreDetail: ScoreDetail;
+};
 
 const synonymMap: Record<string, string[]> = {
   自控: ["自動控制", "控制系統"],
@@ -143,6 +181,8 @@ function expandQueryTerms(query: string) {
     });
   });
 
+  buildCjkNgrams(normalizedQuery).forEach((gram) => terms.add(gram));
+
   return Array.from(terms);
 }
 
@@ -163,6 +203,11 @@ function buildKeywordWhere(queryTerms: string[]) {
       },
       {
         content: {
+          contains: term,
+        },
+      },
+      {
+        searchText: {
           contains: term,
         },
       },
@@ -275,21 +320,7 @@ export async function searchNotes(params: SearchParams): Promise<SearchResult> {
         ...buildFilterWhere(normalized),
       ],
     },
-    include: {
-      author: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      },
-      tags: {
-        include: {
-          tag: true,
-        },
-      },
-      favorites: true,
-    },
+    include: searchNoteInclude,
     take: CANDIDATE_LIMIT,
     orderBy: {
       createdAt: "desc",
@@ -298,7 +329,7 @@ export async function searchNotes(params: SearchParams): Promise<SearchResult> {
 
   const rankingKeyword = buildRankingKeyword(normalized);
 
-  const scoredNotes = notes.map((note) => {
+  const scoredNotes: ScoredNote[] = notes.map((note) => {
     const scoreDetail = calculateNoteScore(note, rankingKeyword);
     const tags = note.tags.map((item) => item.tag);
     const favoriteCount = note.favorites.length;

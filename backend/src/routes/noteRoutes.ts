@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { authMiddleware } from "../middlewares/authMiddleware";
 import { clearCache } from "../utils/cache";
+import { buildSearchText } from "../utils/textProcessing";
 
 const router = Router();
 
@@ -21,6 +22,7 @@ router.get("/", async (req, res) => {
                   { title: { contains: keyword } },
                   { description: { contains: keyword } },
                   { content: { contains: keyword } },
+                  { searchText: { contains: keyword } },
                 ],
               }
             : {},
@@ -112,6 +114,14 @@ router.post("/", authMiddleware, async (req, res) => {
         title,
         description,
         content,
+        searchText: buildSearchText({
+          title,
+          description,
+          content,
+          course,
+          category,
+          tags: [],
+        }),
         fileUrl,
         course,
         category,

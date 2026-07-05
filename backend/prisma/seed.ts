@@ -1,10 +1,12 @@
 import "dotenv/config";
 import bcrypt from "bcrypt";
 import { PrismaClient } from "@prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaBetterSQLite3 } from "@prisma/adapter-better-sqlite3";
+import { buildSearchText } from "../src/utils/textProcessing";
+import { resolvePrismaSqliteUrl } from "../src/lib/sqlitePath";
 
-const adapter = new PrismaBetterSqlite3({
-  url: process.env.DATABASE_URL!,
+const adapter = new PrismaBetterSQLite3({
+  url: resolvePrismaSqliteUrl(process.env.DATABASE_URL!),
 });
 
 const prisma = new PrismaClient({ adapter });
@@ -140,6 +142,7 @@ async function main() {
         title: item.title,
         description: item.description,
         content: item.content,
+        searchText: buildSearchText(item),
         fileUrl: item.fileUrl,
         course: item.course,
         category: item.category,

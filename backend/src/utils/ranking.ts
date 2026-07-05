@@ -1,20 +1,28 @@
+import {
+  buildCjkNgrams,
+  buildSearchText,
+  normalizeText,
+  tokenize,
+} from "./textProcessing";
+
 type PlainTag = {
+  id?: number;
+  name?: string | null;
+};
+
+type NoteTagRelation = {
+  tag?: {
     id?: number;
     name?: string | null;
-  };
-
-  type NoteTagRelation = {
-    tag?: {
-      id?: number;
-      name?: string | null;
-    } | null;
-  };
+  } | null;
+};
 type NoteTagLike = PlainTag | NoteTagRelation;
 
 type RankableNote = {
   title: string;
   description?: string | null;
   content?: string | null;
+  searchText?: string | null;
   course?: string | null;
   category?: string | null;
   fileUrl?: string | null;
@@ -32,6 +40,7 @@ export type ScoreDetail = {
   tagMatch: number;
   descriptionMatch: number;
   contentMatch: number;
+  textSimilarity: number;
 
   relevance: number;
   quality: number;
@@ -42,21 +51,6 @@ export type ScoreDetail = {
 
 function clamp(value: number, min = 0, max = 100) {
   return Math.min(Math.max(value, min), max);
-}
-
-function normalizeText(text: string | null | undefined) {
-  return (text || "")
-    .toLowerCase()
-    .replace(/[｜|、，,。．.：:；;]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function tokenize(keyword: string) {
-  return normalizeText(keyword)
-    .split(" ")
-    .map((word) => word.trim())
-    .filter(Boolean);
 }
 
 function isPlainTag(item: NoteTagLike): item is PlainTag {
@@ -110,6 +104,49 @@ function textMatchScore(text: string | null | undefined, keyword: string) {
   const matchedTokens = tokens.filter((token) => source.includes(token)).length;
 
   return Math.round((matchedTokens / tokens.length) * 70);
+}
+
+/**
+ * calculateTextSimilarity
+ *
+ * 第一版文字相似度使用 token overlap：
+ * 1. 把 query 切成 tokens
+ * 2. 把 searchText 切成 tokens
+ * 3. 計算 query tokens 有多少出現在 searchText 裡
+ *
+ * 例如 query = "工程數學 傅立葉"，兩個詞都命中就是 100 分，只命中一個就是 50 分。
+ */
+export function calculateTextSimilarity(
+  query: string,
+  searchText: string | null | undefined
+) {
+  const normalizedQuery = normalizeText(query);
+  const normalizedSearchText = normalizeText(searchText);
+  const queryTokens = Array.from(new Set(tokenize(query)));
+  const searchTokens = new Set(tokenize(searchText));
+
+  if (!normalizedQuery || !normalizedSearchText) {
+    return 0;
+  }
+
+  if (normalizedSearchText.includes(normalizedQuery)) {
+    return 100;
+  }
+
+  const matchedCount = queryTokens.filter((token) =>
+    searchTokens.has(token) || normalizedSearchText.includes(token)
+  ).length;
+  const tokenScore =
+    queryTokens.length > 0 ? (matchedCount / queryTokens.length) * 100 : 0;
+
+  const cjkGrams = buildCjkNgrams(query);
+  const matchedGramCount = cjkGrams.filter((gram) =>
+    normalizedSearchText.includes(gram)
+  ).length;
+  const cjkScore =
+    cjkGrams.length > 0 ? (matchedGramCount / cjkGrams.length) * 100 : 0;
+
+  return clamp(Math.max(tokenScore, cjkScore));
 }
 
 /**
@@ -197,6 +234,8 @@ export function calculateNoteScore(
   const tagMatch = textMatchScore(getTagText(note.tags), keyword);
   const descriptionMatch = textMatchScore(note.description, keyword);
   const contentMatch = textMatchScore(note.content, keyword);
+  const searchableText = note.searchText || buildSearchText(note);
+  const textSimilarity = calculateTextSimilarity(keyword, searchableText);
 
   /**
    * Relevance 內部權重：
@@ -222,14 +261,16 @@ export function calculateNoteScore(
   /**
    * 總分權重：
    * - relevance 最高，因為搜尋結果最重要的是相關性
+   * - textSimilarity 補強整篇筆記文字與查詢詞的整體重疊程度
    * - quality 防止空內容或低品質資料排太前面
    * - popularity 作為使用者行為訊號
    * - recency 只做輔助，不讓新資料直接霸榜
    */
   const total =
-    relevance * 0.55 +
-    quality * 0.15 +
-    popularity * 0.2 +
+    relevance * 0.45 +
+    textSimilarity * 0.15 +
+    quality * 0.12 +
+    popularity * 0.18 +
     recency * 0.1;
 
   return {
@@ -239,6 +280,7 @@ export function calculateNoteScore(
     tagMatch: Math.round(tagMatch),
     descriptionMatch: Math.round(descriptionMatch),
     contentMatch: Math.round(contentMatch),
+    textSimilarity: Number(textSimilarity.toFixed(2)),
 
     relevance: Number(relevance.toFixed(2)),
     quality: Number(quality.toFixed(2)),
