@@ -21,8 +21,11 @@ router.post("/", authMiddleware, async (req, res) => {
       });
     }
 
-    const note = await prisma.note.findUnique({
-      where: { id: Number(noteId) },
+    const note = await prisma.note.findFirst({
+      where: {
+        id: Number(noteId),
+        OR: [{ authorId: userId }, { visibility: "PUBLIC" }],
+      },
     });
 
     if (!note) {
@@ -80,7 +83,12 @@ router.get("/", authMiddleware, async (req, res) => {
     }
 
     const favorites = await prisma.favorite.findMany({
-      where: { userId },
+      where: {
+        userId,
+        note: {
+          OR: [{ authorId: userId }, { visibility: "PUBLIC" }],
+        },
+      },
       include: {
         note: {
           include: {
@@ -131,11 +139,12 @@ router.delete("/:noteId", authMiddleware, async (req, res) => {
       });
     }
 
-    const existingFavorite = await prisma.favorite.findUnique({
+    const existingFavorite = await prisma.favorite.findFirst({
       where: {
-        userId_noteId: {
-          userId,
-          noteId,
+        userId,
+        noteId,
+        note: {
+          OR: [{ authorId: userId }, { visibility: "PUBLIC" }],
         },
       },
     });
@@ -148,10 +157,7 @@ router.delete("/:noteId", authMiddleware, async (req, res) => {
 
     await prisma.favorite.delete({
       where: {
-        userId_noteId: {
-          userId,
-          noteId,
-        },
+        id: existingFavorite.id,
       },
     });
 

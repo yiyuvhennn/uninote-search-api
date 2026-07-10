@@ -4,6 +4,7 @@ import api from "../services/api";
 import type { Note, SearchMeta, SearchResponse } from "../types/note";
 
 type SortMode = "relevance" | "latest" | "popular";
+type SearchScope = "all" | "mine" | "public";
 
 const notes = ref<Note[]>([]);
 const meta = ref<SearchMeta | null>(null);
@@ -14,6 +15,7 @@ const category = ref("");
 const tag = ref("");
 
 const sort = ref<SortMode>("relevance");
+const scope = ref<SearchScope>("all");
 const page = ref(1);
 const pageSize = 10;
 
@@ -52,6 +54,28 @@ const sortOptions: Array<{
     label: "熱門",
     value: "popular",
     description: "依瀏覽、按讚、收藏排序",
+  },
+];
+
+const scopeOptions: Array<{
+  label: string;
+  value: SearchScope;
+  description: string;
+}> = [
+  {
+    label: "全部可見",
+    value: "all",
+    description: "自己的筆記 + 公開筆記",
+  },
+  {
+    label: "我的筆記",
+    value: "mine",
+    description: "只搜尋自己建立的筆記",
+  },
+  {
+    label: "公開筆記",
+    value: "public",
+    description: "只搜尋共享筆記庫",
   },
 ];
 
@@ -142,6 +166,10 @@ function getMainReason(note: Note) {
       value: detail.contentMatch,
     },
     {
+      label: "文字相似度",
+      value: detail.textSimilarity ?? 0,
+    },
+    {
       label: "熱門度",
       value: detail.popularity,
     },
@@ -176,6 +204,7 @@ async function fetchSearchResults() {
         category: category.value.trim() || undefined,
         tag: tag.value.trim() || undefined,
         sort: sort.value,
+        scope: scope.value,
         page: page.value,
         pageSize,
       },
@@ -209,6 +238,12 @@ function changeSort(nextSort: SortMode) {
   fetchSearchResults();
 }
 
+function changeScope(nextScope: SearchScope) {
+  scope.value = nextScope;
+  page.value = 1;
+  fetchSearchResults();
+}
+
 function clearAdvancedFilters() {
   course.value = "";
   category.value = "";
@@ -223,6 +258,7 @@ function handleReset() {
   category.value = "";
   tag.value = "";
   sort.value = "relevance";
+  scope.value = "all";
   page.value = 1;
   fetchSearchResults();
 }
@@ -313,6 +349,31 @@ onMounted(fetchSearchResults);
         >
           {{ item }}
         </button>
+      </div>
+
+      <div class="console-divider"></div>
+
+      <div class="sort-row">
+        <div>
+          <span class="section-label">搜尋範圍</span>
+
+          <p>
+            預設搜尋自己的私人筆記與所有公開筆記。
+          </p>
+        </div>
+
+        <div class="sort-tabs">
+          <button
+            v-for="option in scopeOptions"
+            :key="option.value"
+            type="button"
+            :class="{ active: scope === option.value }"
+            @click="changeScope(option.value)"
+          >
+            <strong>{{ option.label }}</strong>
+            <small>{{ option.description }}</small>
+          </button>
+        </div>
       </div>
 
       <div class="console-divider"></div>
@@ -413,7 +474,7 @@ onMounted(fetchSearchResults);
         <strong>{{ totalResultText }}</strong>
 
         <span>
-          排序：{{ meta?.sort ?? sort }} ｜ Cache：{{ meta?.cache ?? "-" }}
+          範圍：{{ meta?.scope ?? scope }} ｜ 排序：{{ meta?.sort ?? sort }} ｜ Cache：{{ meta?.cache ?? "-" }}
         </span>
       </div>
 
@@ -551,6 +612,11 @@ onMounted(fetchSearchResults);
                   <span>Content</span>
                   <strong>{{ formatPercent(note.scoreDetail.contentMatch) }}</strong>
                 </div>
+
+                <div>
+                  <span>文字相似度 textSimilarity</span>
+                  <strong>{{ formatPercent(note.scoreDetail.textSimilarity ?? 0) }}</strong>
+                </div>
               </div>
             </div>
           </details>
@@ -599,27 +665,25 @@ onMounted(fetchSearchResults);
   display: grid;
   grid-template-columns: 1fr 260px;
   gap: 24px;
-  padding: 38px;
-  border-radius: 46px;
-  color: white;
-  background:
-    radial-gradient(circle at 78% 18%, rgba(163, 230, 53, 0.28), transparent 28%),
-    radial-gradient(circle at 12% 12%, rgba(34, 211, 238, 0.16), transparent 32%),
-    linear-gradient(135deg, #08111f 0%, #172554 48%, #3b0764 100%);
-  box-shadow: 0 34px 100px rgba(15, 23, 42, 0.24);
+  padding: 34px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--ink);
+  background: #ffffff;
+  box-shadow: var(--shadow-soft);
 }
 
 .hero-copy h1 {
   margin: 0;
-  font-size: clamp(48px, 7vw, 92px);
-  line-height: 0.95;
-  letter-spacing: -0.09em;
+  font-size: clamp(42px, 6vw, 72px);
+  line-height: 1.04;
+  letter-spacing: 0;
 }
 
 .hero-copy p {
   max-width: 780px;
   margin: 20px 0 0;
-  color: #cbd5e1;
+  color: var(--muted);
   line-height: 1.85;
 }
 
@@ -631,12 +695,13 @@ onMounted(fetchSearchResults);
 }
 
 .hero-tags span {
-  padding: 9px 13px;
-  border-radius: 999px;
-  color: white;
-  background: rgba(255, 255, 255, 0.12);
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: #344054;
+  background: #f9fafb;
   font-size: 13px;
-  font-weight: 950;
+  font-weight: 750;
 }
 
 .hero-status {
@@ -644,23 +709,22 @@ onMounted(fetchSearchResults);
   padding: 24px;
   display: grid;
   align-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 34px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(16px);
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: #eff6ff;
 }
 
 .cache-pill {
   width: fit-content;
   padding: 8px 11px;
-  border-radius: 999px;
+  border-radius: 8px;
   font-size: 13px;
-  font-weight: 1000;
+  font-weight: 800;
 }
 
 .cache-pill.hit {
-  color: #1a2e05;
-  background: #a3e635;
+  color: #166534;
+  background: #dcfce7;
 }
 
 .cache-pill.miss {
@@ -669,45 +733,44 @@ onMounted(fetchSearchResults);
 }
 
 .cache-pill.idle {
-  color: #dbeafe;
-  background: rgba(255, 255, 255, 0.12);
+  color: #475467;
+  background: #ffffff;
 }
 
 .hero-status strong {
   margin-top: 12px;
-  font-size: 76px;
-  line-height: 0.95;
-  letter-spacing: -0.08em;
+  font-size: 64px;
+  line-height: 1;
+  letter-spacing: 0;
 }
 
 .hero-status small {
-  color: #cbd5e1;
+  color: var(--muted);
   font-weight: 800;
 }
 
 .status-divider {
   height: 1px;
   margin: 18px 0;
-  background: rgba(255, 255, 255, 0.16);
+  background: #bfdbfe;
 }
 
 .hero-status p {
   margin: 0;
-  color: #cbd5e1;
+  color: var(--muted);
 }
 
 .hero-status b {
-  color: white;
+  color: var(--ink);
 }
 
 .search-console {
   margin-top: 24px;
   padding: 22px;
   border: 1px solid var(--line);
-  border-radius: 34px;
-  background: rgba(255, 255, 255, 0.82);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
   box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(16px);
 }
 
 .main-search-row {
@@ -722,28 +785,28 @@ onMounted(fetchSearchResults);
 .section-label {
   display: block;
   margin-bottom: 8px;
-  color: #64748b;
+  color: var(--muted);
   font-size: 12px;
-  font-weight: 1000;
-  letter-spacing: 0.12em;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .main-search-field input {
   min-height: 56px;
-  border-radius: 22px;
+  border-radius: 8px;
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .run-search-btn {
   min-height: 56px;
   border: 0;
-  border-radius: 22px;
+  border-radius: 8px;
   color: white;
-  background: linear-gradient(135deg, var(--blue), var(--violet));
-  font-weight: 1000;
-  box-shadow: 0 18px 34px rgba(56, 103, 255, 0.24);
+  background: var(--blue);
+  font-weight: 800;
+  box-shadow: 0 12px 22px rgba(47, 111, 237, 0.18);
 }
 
 .quick-row {
@@ -756,32 +819,32 @@ onMounted(fetchSearchResults);
 
 .quick-row > span {
   margin-right: 4px;
-  color: #64748b;
+  color: var(--muted);
   font-size: 13px;
-  font-weight: 950;
+  font-weight: 800;
 }
 
 .quick-row button {
-  border: 1px solid rgba(148, 163, 184, 0.26);
+  border: 1px solid var(--line);
   padding: 8px 11px;
-  border-radius: 999px;
+  border-radius: 8px;
   color: #334155;
-  background: rgba(255, 255, 255, 0.72);
+  background: #ffffff;
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 750;
 }
 
 .quick-row button.active,
 .quick-row button:hover {
   color: white;
-  border-color: transparent;
-  background: linear-gradient(135deg, var(--blue), var(--violet));
+  border-color: var(--blue);
+  background: var(--blue);
 }
 
 .console-divider {
   height: 1px;
   margin: 22px 0;
-  background: rgba(148, 163, 184, 0.22);
+  background: var(--line);
 }
 
 .sort-row {
@@ -793,7 +856,7 @@ onMounted(fetchSearchResults);
 
 .sort-row p {
   margin: 0;
-  color: #64748b;
+  color: var(--muted);
   line-height: 1.65;
   font-size: 14px;
 }
@@ -805,11 +868,11 @@ onMounted(fetchSearchResults);
 }
 
 .sort-tabs button {
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  border: 1px solid var(--line);
   padding: 14px;
-  border-radius: 22px;
+  border-radius: 10px;
   text-align: left;
-  background: rgba(255, 255, 255, 0.72);
+  background: #ffffff;
   transition: 0.2s ease;
 }
 
@@ -817,25 +880,24 @@ onMounted(fetchSearchResults);
   display: block;
   color: #111827;
   font-size: 15px;
-  font-weight: 1000;
+  font-weight: 800;
 }
 
 .sort-tabs button small {
   display: block;
   margin-top: 5px;
-  color: #64748b;
+  color: var(--muted);
   line-height: 1.4;
 }
 
 .sort-tabs button.active {
-  border-color: transparent;
-  background: linear-gradient(135deg, var(--blue), var(--violet));
-  box-shadow: 0 16px 30px rgba(56, 103, 255, 0.22);
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  box-shadow: none;
 }
 
-.sort-tabs button.active strong,
-.sort-tabs button.active small {
-  color: white;
+.sort-tabs button.active strong {
+  color: var(--blue);
 }
 
 .advanced-toggle-row {
@@ -847,15 +909,15 @@ onMounted(fetchSearchResults);
 }
 
 .advanced-toggle {
-  border: 1px solid rgba(148, 163, 184, 0.26);
+  border: 1px solid var(--line);
   padding: 10px 14px;
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  border-radius: 999px;
+  border-radius: 8px;
   color: #334155;
-  background: rgba(255, 255, 255, 0.74);
-  font-weight: 1000;
+  background: #ffffff;
+  font-weight: 800;
 }
 
 .advanced-toggle b {
@@ -863,7 +925,7 @@ onMounted(fetchSearchResults);
   place-items: center;
   min-width: 22px;
   height: 22px;
-  border-radius: 999px;
+  border-radius: 7px;
   color: white;
   background: var(--blue);
   font-size: 12px;
@@ -872,9 +934,9 @@ onMounted(fetchSearchResults);
 .reset-link {
   border: 0;
   padding: 10px 12px;
-  color: #64748b;
+  color: var(--muted);
   background: transparent;
-  font-weight: 900;
+  font-weight: 800;
 }
 
 .reset-link:hover {
@@ -887,9 +949,9 @@ onMounted(fetchSearchResults);
   gap: 13px;
   margin-top: 16px;
   padding: 16px;
-  border: 1px dashed rgba(148, 163, 184, 0.45);
-  border-radius: 26px;
-  background: rgba(248, 250, 252, 0.74);
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f9fafb;
 }
 
 .filter-actions {
@@ -915,7 +977,7 @@ onMounted(fetchSearchResults);
 .result-toolbar strong {
   color: #111827;
   font-size: 23px;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
 }
 
 .result-toolbar span {
@@ -934,16 +996,14 @@ onMounted(fetchSearchResults);
   gap: 20px;
   padding: 22px;
   border: 1px solid var(--line);
-  border-radius: 34px;
-  background:
-    radial-gradient(circle at top right, rgba(56, 103, 255, 0.08), transparent 28%),
-    rgba(255, 255, 255, 0.88);
+  border-radius: 14px;
+  background: #ffffff;
   box-shadow: var(--shadow-soft);
   transition: 0.22s ease;
 }
 
 .result-card:hover {
-  transform: translateY(-3px);
+  transform: translateY(-2px);
   box-shadow: var(--shadow-hard);
 }
 
@@ -952,24 +1012,23 @@ onMounted(fetchSearchResults);
   padding: 18px;
   display: grid;
   align-content: space-between;
-  border-radius: 28px;
-  color: #08111f;
-  background:
-    radial-gradient(circle at 22% 20%, rgba(255, 255, 255, 0.7), transparent 26%),
-    linear-gradient(135deg, #a3e635, #22d3ee);
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  color: var(--ink);
+  background: #eff6ff;
 }
 
 .rank-panel > span {
   font-size: 12px;
-  font-weight: 1000;
-  letter-spacing: 0.14em;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .rank-panel > strong {
   font-size: 42px;
   line-height: 1;
-  letter-spacing: -0.08em;
+  letter-spacing: 0;
 }
 
 .rank-score b,
@@ -980,12 +1039,12 @@ onMounted(fetchSearchResults);
 .rank-score b {
   font-size: 38px;
   line-height: 1;
-  letter-spacing: -0.08em;
+  letter-spacing: 0;
 }
 
 .rank-score small {
   margin-top: 6px;
-  font-weight: 900;
+  font-weight: 800;
 }
 
 .result-content {
@@ -1007,28 +1066,28 @@ onMounted(fetchSearchResults);
 
 .meta-chips span {
   padding: 7px 10px;
-  border-radius: 999px;
+  border-radius: 8px;
   color: #3867ff;
   background: #eff6ff;
   font-size: 12px;
-  font-weight: 950;
+  font-weight: 750;
 }
 
 .reason-text {
   margin: 0;
-  color: #64748b;
+  color: var(--muted);
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 750;
 }
 
 .result-title {
   display: block;
   margin: 14px 0 8px;
   color: #0f172a;
-  font-size: 29px;
+  font-size: 28px;
   line-height: 1.15;
-  font-weight: 1000;
-  letter-spacing: -0.055em;
+  font-weight: 850;
+  letter-spacing: 0;
   text-decoration: none;
 }
 
@@ -1039,7 +1098,7 @@ onMounted(fetchSearchResults);
 .description,
 .content-preview {
   margin: 0 0 10px;
-  color: #64748b;
+  color: var(--muted);
   line-height: 1.75;
 }
 
@@ -1063,7 +1122,7 @@ onMounted(fetchSearchResults);
   display: block;
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--blue), var(--pink), var(--lime));
+  background: var(--blue);
 }
 
 .tag-list {
@@ -1075,11 +1134,11 @@ onMounted(fetchSearchResults);
 
 .tag-list span {
   padding: 6px 9px;
-  border-radius: 999px;
+  border-radius: 8px;
   color: #334155;
   background: #f1f5f9;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 750;
 }
 
 .score-detail {
@@ -1091,11 +1150,12 @@ onMounted(fetchSearchResults);
   justify-content: space-between;
   gap: 12px;
   padding: 13px 14px;
-  border-radius: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
   color: #111827;
   background: #f8fafc;
   cursor: pointer;
-  font-weight: 1000;
+  font-weight: 800;
 }
 
 .score-detail summary b {
@@ -1110,7 +1170,7 @@ onMounted(fetchSearchResults);
   margin: 0 0 10px;
   color: #334155;
   font-size: 14px;
-  font-weight: 1000;
+  font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -1127,16 +1187,16 @@ onMounted(fetchSearchResults);
 
 .breakdown-grid div {
   padding: 13px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 18px;
-  background: rgba(248, 250, 252, 0.86);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
 }
 
 .breakdown-grid span {
   display: block;
   color: #94a3b8;
   font-size: 11px;
-  font-weight: 1000;
+  font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -1146,7 +1206,7 @@ onMounted(fetchSearchResults);
   margin-top: 6px;
   color: #111827;
   font-size: 23px;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
 }
 
 .pagination-panel {
@@ -1158,7 +1218,7 @@ onMounted(fetchSearchResults);
 }
 
 .pagination-panel span {
-  font-weight: 1000;
+  font-weight: 800;
 }
 
 @media (max-width: 980px) {
@@ -1192,7 +1252,7 @@ onMounted(fetchSearchResults);
 
   .search-hero {
     padding: 26px;
-    border-radius: 34px;
+    border-radius: 14px;
   }
 
   .main-search-row {

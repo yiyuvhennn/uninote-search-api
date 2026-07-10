@@ -16,6 +16,7 @@ export interface ScoreDetail {
   tagMatch: number;
   descriptionMatch: number;
   contentMatch: number;
+  textSimilarity?: number;
 
   relevance: number;
   quality: number;
@@ -29,9 +30,11 @@ export interface Note {
   title: string;
   description?: string | null;
   content?: string | null;
+  searchText?: string | null;
   fileUrl: string;
   course: string;
   category?: string | null;
+  visibility: "PUBLIC" | "PRIVATE";
   views: number;
   likes: number;
   createdAt: string;
@@ -51,6 +54,7 @@ export interface SearchMeta {
   category: string;
   tag: string;
   sort: "relevance" | "latest" | "popular";
+  scope: "all" | "mine" | "public";
   page: number;
   pageSize: number;
   total: number;

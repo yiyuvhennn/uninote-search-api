@@ -78,7 +78,7 @@ onMounted(() => {
         <p class="subtitle">用一組測試帳號進入 Search API MVP，完整體驗搜尋、篩選與排序流程。</p>
 
         <form class="register-form" @submit.prevent="handleRegister">
-          <label><span>名稱</span><input v-model="name" type="text" placeholder="例如：陳翊猷" /><small v-if="nameError">{{ nameError }}</small></label>
+          <label><span>名稱</span><input v-model="name" type="text" placeholder="例如：王小明" /><small v-if="nameError">{{ nameError }}</small></label>
           <label><span>Email</span><input v-model="email" type="email" placeholder="請輸入 Email" /><small v-if="emailError">{{ emailError }}</small></label>
 
           <label>
@@ -106,24 +106,23 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.register-stage { min-height:100vh; display:grid; grid-template-columns:.92fr 1.08fr; background:radial-gradient(circle at 15% 12%, rgba(163,230,53,.28), transparent 28%), radial-gradient(circle at 86% 20%, rgba(34,211,238,.24), transparent 28%), linear-gradient(135deg,#08111f,#0f172a 52%,#134e4a); color:white; }
-.story-panel { position:relative; padding:44px; display:flex; flex-direction:column; justify-content:space-between; overflow:hidden; }
-.story-panel::after { content:""; position:absolute; width:420px; height:420px; right:-180px; bottom:-150px; border-radius:50%; background:rgba(163,230,53,.18); }
-.brand { position:relative; z-index:1; width:fit-content; padding:12px 14px; border-radius:18px; color:#08111f; background:#a3e635; text-decoration:none; font-weight:1000; } .brand span { margin-left:8px; }
-.story-copy { position:relative; z-index:1; } .story-copy p { margin:0 0 12px; color:#67e8f9; font-size:13px; font-weight:1000; letter-spacing:.16em; text-transform:uppercase; }
-.story-copy h1 { margin:0; font-size:clamp(48px,6vw,82px); line-height:.96; letter-spacing:-.09em; }
-.journey-card { position:relative; z-index:1; display:grid; gap:12px; padding:18px; border:1px solid rgba(255,255,255,.16); border-radius:30px; background:rgba(255,255,255,.08); backdrop-filter:blur(18px); }
-.step { display:flex; align-items:center; gap:14px; padding:15px; border-radius:22px; color:#cbd5e1; background:rgba(255,255,255,.06); } .step.active { color:white; background:rgba(163,230,53,.16); border:1px solid rgba(163,230,53,.36); } .step b { display:grid; place-items:center; width:42px; height:42px; border-radius:15px; color:#08111f; background:#a3e635; }
+.register-stage { min-height:100vh; display:grid; grid-template-columns:.92fr 1.08fr; background:var(--bg); color:var(--ink); }
+.story-panel { position:relative; padding:44px; display:flex; flex-direction:column; justify-content:space-between; overflow:hidden; background:#18212f; color:white; }
+.brand { position:relative; z-index:1; width:fit-content; padding:11px 13px; border-radius:8px; color:white; background:#2f6fed; text-decoration:none; font-weight:850; } .brand span { margin-left:8px; }
+.story-copy { position:relative; z-index:1; } .story-copy p { margin:0 0 12px; color:#93c5fd; font-size:13px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
+.story-copy h1 { margin:0; font-size:clamp(42px,6vw,72px); line-height:1.04; letter-spacing:0; }
+.journey-card { position:relative; z-index:1; display:grid; gap:12px; padding:18px; border:1px solid rgba(255,255,255,.16); border-radius:14px; background:rgba(255,255,255,.08); }
+.step { display:flex; align-items:center; gap:14px; padding:15px; border-radius:10px; color:#cbd5e1; background:rgba(255,255,255,.06); } .step.active { color:white; background:rgba(47,111,237,.24); border:1px solid rgba(147,197,253,.48); } .step b { display:grid; place-items:center; width:42px; height:42px; border-radius:8px; color:white; background:#2f6fed; }
 .register-form-zone { display:grid; place-items:center; padding:34px; }
-.register-card { width:min(520px,100%); padding:34px; border-radius:38px; color:#111827; background:rgba(255,255,255,.94); box-shadow:0 34px 100px rgba(0,0,0,.24); }
-h2 { margin:0; font-size:42px; letter-spacing:-.075em; } .subtitle { margin:12px 0 0; color:#64748b; line-height:1.7; }
-.register-form { display:grid; gap:14px; margin-top:25px; } label { display:grid; gap:8px; color:#334155; font-weight:950; } small { color:#dc2626; font-weight:850; }
-.password-box { position:relative; } .password-box input { padding-right:76px; } .password-box button { position:absolute; right:8px; top:50%; transform:translateY(-50%); border:0; border-radius:12px; padding:8px 10px; color:#0f766e; background:#ccfbf1; font-weight:950; }
-.strength { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; } .strength i { height:7px; border-radius:999px; background:#e2e8f0; } .strength i.active { background:linear-gradient(135deg,#a3e635,#22d3ee); }
-.check { grid-template-columns:20px 1fr; align-items:flex-start; padding:13px; border-radius:18px; background:#f8fafc; border:1px solid #e2e8f0; } .check input { width:18px; height:18px; accent-color:#0f766e; } .check span { color:#64748b!important; font-size:13px!important; line-height:1.6; }
-.message { margin:0; padding:12px 14px; border-radius:16px; font-weight:850; } .error { color:#b91c1c; background:#fff1f2; } .success { color:#166534; background:#f0fdf4; }
-.submit { height:52px; border:0; border-radius:18px; color:#08111f; background:linear-gradient(135deg,#a3e635,#22d3ee); font-weight:1000; font-size:16px; box-shadow:0 18px 38px rgba(34,211,238,.2); }
-.switch { margin:22px 0 0; text-align:center; color:#64748b; } .switch a { color:#0f766e; font-weight:1000; text-decoration:none; }
+.register-card { width:min(520px,100%); padding:34px; border:1px solid var(--line); border-radius:14px; color:#111827; background:#ffffff; box-shadow:var(--shadow-hard); }
+h2 { margin:0; font-size:40px; letter-spacing:0; } .subtitle { margin:12px 0 0; color:#64748b; line-height:1.7; }
+.register-form { display:grid; gap:14px; margin-top:25px; } label { display:grid; gap:8px; color:#334155; font-weight:800; } small { color:#dc2626; font-weight:750; }
+.password-box { position:relative; } .password-box input { padding-right:76px; } .password-box button { position:absolute; right:8px; top:50%; transform:translateY(-50%); border:0; border-radius:8px; padding:8px 10px; color:#3867ff; background:#eff6ff; font-weight:800; }
+.strength { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; } .strength i { height:7px; border-radius:999px; background:#e2e8f0; } .strength i.active { background:#2f6fed; }
+.check { grid-template-columns:20px 1fr; align-items:flex-start; padding:13px; border-radius:10px; background:#f8fafc; border:1px solid #e2e8f0; } .check input { width:18px; height:18px; accent-color:#2f6fed; } .check span { color:#64748b!important; font-size:13px!important; line-height:1.6; }
+.message { margin:0; padding:12px 14px; border-radius:10px; font-weight:800; } .error { color:#b91c1c; background:#fff1f2; } .success { color:#166534; background:#f0fdf4; }
+.submit { height:52px; border:0; border-radius:8px; color:white; background:var(--blue); font-weight:800; font-size:16px; box-shadow:0 14px 28px rgba(47,111,237,.18); }
+.switch { margin:22px 0 0; text-align:center; color:#64748b; } .switch a { color:#3867ff; font-weight:800; text-decoration:none; }
 @media (max-width: 920px) { .register-stage { grid-template-columns:1fr; } .story-panel { min-height:520px; } }
 @media (max-width: 560px) { .story-panel,.register-form-zone { padding:20px; } .story-copy h1 { font-size:50px; } }
 </style>

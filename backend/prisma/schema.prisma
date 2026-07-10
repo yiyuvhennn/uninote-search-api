@@ -28,6 +28,7 @@ model Note {
   fileUrl     String
   course      String
   category    String?
+  visibility  String     @default("PUBLIC")
   views       Int        @default(0)
   likes       Int        @default(0)
   createdAt   DateTime   @default(now())

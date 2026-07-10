@@ -1,9 +1,10 @@
 import { prisma } from "../lib/prisma";
 import { getCache, setCache } from "../utils/cache";
 import { calculateNoteScore, type ScoreDetail } from "../utils/ranking";
-import { buildCjkNgrams } from "../utils/textProcessing";
+import { buildCjkNgrams, tokenize } from "../utils/textProcessing";
 
 type SearchSort = "relevance" | "latest" | "popular";
+type SearchScope = "all" | "mine" | "public";
 
 type SearchParams = {
   q?: string;
@@ -11,6 +12,7 @@ type SearchParams = {
   category?: string;
   tag?: string;
   sort?: SearchSort;
+  scope?: SearchScope;
   page?: number;
   pageSize?: number;
 };
@@ -21,6 +23,7 @@ type SearchMeta = {
   category: string;
   tag: string;
   sort: SearchSort;
+  scope: SearchScope;
   page: number;
   pageSize: number;
   total: number;
@@ -39,6 +42,7 @@ type SearchResult = {
     fileUrl: string;
     course: string;
     category: string | null;
+    visibility: string;
     views: number;
     likes: number;
     createdAt: Date;
@@ -61,43 +65,36 @@ type SearchResult = {
   meta: SearchMeta;
 };
 
+type SearchResultNote = SearchResult["data"][number];
+
 const CANDIDATE_LIMIT = 1000;
 
-const searchNoteInclude = {
-  author: {
-    select: {
-      id: true,
-      name: true,
-      email: true,
+function buildSearchNoteInclude(userId: number) {
+  return {
+    author: {
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
     },
-  },
-  tags: {
-    include: {
-      tag: true,
+    tags: {
+      include: {
+        tag: true,
+      },
     },
-  },
-  favorites: true,
-};
-
-type SearchNote = Omit<
-  SearchResult["data"][number],
-  "tags" | "favoriteCount" | "score" | "scoreDetail"
-> & {
-  tags: Array<{
-    tag: {
-      id: number;
-      name: string;
-    };
-  }>;
-  favorites: unknown[];
-};
-
-type ScoredNote = Omit<SearchNote, "tags"> & {
-  tags: SearchResult["data"][number]["tags"];
-  favoriteCount: number;
-  score: number;
-  scoreDetail: ScoreDetail;
-};
+    favorites: {
+      where: {
+        userId,
+      },
+    },
+    _count: {
+      select: {
+        favorites: true,
+      },
+    },
+  };
+}
 
 const synonymMap: Record<string, string[]> = {
   自控: ["自動控制", "控制系統"],
@@ -139,6 +136,14 @@ function normalizeSort(sort?: SearchSort): SearchSort {
   return "relevance";
 }
 
+function normalizeScope(scope?: SearchScope): SearchScope {
+  if (scope === "mine" || scope === "public" || scope === "all") {
+    return scope;
+  }
+
+  return "all";
+}
+
 function normalizeParams(params: SearchParams) {
   return {
     q: normalizeText(params.q),
@@ -146,8 +151,23 @@ function normalizeParams(params: SearchParams) {
     category: normalizeText(params.category),
     tag: normalizeText(params.tag),
     sort: normalizeSort(params.sort),
+    scope: normalizeScope(params.scope),
     page: toPositiveNumber(params.page, 1),
     pageSize: Math.min(toPositiveNumber(params.pageSize, 12), 50),
+  };
+}
+
+function buildVisibleNoteWhere(userId: number, scope: SearchScope) {
+  if (scope === "mine") {
+    return { authorId: userId };
+  }
+
+  if (scope === "public") {
+    return { visibility: "PUBLIC" };
+  }
+
+  return {
+    OR: [{ authorId: userId }, { visibility: "PUBLIC" }],
   };
 }
 
@@ -166,6 +186,7 @@ function expandQueryTerms(query: string) {
 
   const terms = new Set<string>();
   terms.add(normalizedQuery);
+  tokenize(normalizedQuery).forEach((token) => terms.add(token));
 
   Object.entries(synonymMap).forEach(([key, values]) => {
     if (normalizedQuery.includes(key)) {
@@ -288,10 +309,14 @@ function getPopularValue(note: {
   return note.views * 0.1 + note.likes * 0.5 + note.favoriteCount;
 }
 
-export async function searchNotes(params: SearchParams): Promise<SearchResult> {
+export async function searchNotes(
+  params: SearchParams,
+  userId: number
+): Promise<SearchResult> {
   const normalized = normalizeParams(params);
   const queryTerms = expandQueryTerms(normalized.q);
   const cacheKey = `search:${JSON.stringify({
+    userId,
     ...normalized,
     queryTerms,
   })}`;
@@ -316,11 +341,14 @@ export async function searchNotes(params: SearchParams): Promise<SearchResult> {
   const notes = await prisma.note.findMany({
     where: {
       AND: [
+        {
+          ...buildVisibleNoteWhere(userId, normalized.scope),
+        },
         buildKeywordWhere(queryTerms),
         ...buildFilterWhere(normalized),
       ],
     },
-    include: searchNoteInclude,
+    include: buildSearchNoteInclude(userId),
     take: CANDIDATE_LIMIT,
     orderBy: {
       createdAt: "desc",
@@ -329,14 +357,43 @@ export async function searchNotes(params: SearchParams): Promise<SearchResult> {
 
   const rankingKeyword = buildRankingKeyword(normalized);
 
-  const scoredNotes: ScoredNote[] = notes.map((note) => {
-    const scoreDetail = calculateNoteScore(note, rankingKeyword);
+  const scoredNotes: SearchResultNote[] = notes.map((note) => {
     const tags = note.tags.map((item) => item.tag);
-    const favoriteCount = note.favorites.length;
+    const favoriteCount = note._count.favorites;
+    const rankableNote = {
+      title: note.title,
+      description: note.description,
+      content: note.content,
+      searchText: note.searchText,
+      course: note.course,
+      category: note.category,
+      fileUrl: note.fileUrl,
+      views: note.views,
+      likes: note.likes,
+      createdAt: note.createdAt,
+      favorites: Array.from({ length: favoriteCount }),
+      tags,
+    };
+    const scoreDetail = calculateNoteScore(rankableNote, rankingKeyword);
 
     return {
-      ...note,
+      id: note.id,
+      title: note.title,
+      description: note.description,
+      content: note.content,
+      searchText: note.searchText,
+      fileUrl: note.fileUrl,
+      course: note.course,
+      category: note.category,
+      visibility: note.visibility,
+      views: note.views,
+      likes: note.likes,
+      createdAt: note.createdAt,
+      updatedAt: note.updatedAt,
+      authorId: note.authorId,
+      author: note.author,
       tags,
+      favorites: note.favorites,
       favoriteCount,
       score: scoreDetail.total,
       scoreDetail,
@@ -369,6 +426,7 @@ export async function searchNotes(params: SearchParams): Promise<SearchResult> {
       category: normalized.category,
       tag: normalized.tag,
       sort: normalized.sort,
+      scope: normalized.scope,
       page: safePage,
       pageSize: normalized.pageSize,
       total,

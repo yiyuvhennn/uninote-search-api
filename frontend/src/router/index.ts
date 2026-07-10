@@ -7,8 +7,9 @@ import NoteDetailPage from "../pages/NoteDetailPage.vue";
 import FavoritesPage from "../pages/FavoritesPage.vue";
 import CreateNotePage from "../pages/CreateNotePage.vue";
 import SearchPage from "../pages/SearchPage.vue";
+import SettingsPage from "../pages/SettingsPage.vue";
 
-const protectedPages = ["/notes", "/search", "/favorites", "/create"];
+const protectedPages = ["/notes", "/search", "/favorites", "/create", "/settings"];
 
 const router = createRouter({
   history: createWebHistory(),
@@ -21,6 +22,7 @@ const router = createRouter({
     { path: "/notes/:id", component: NoteDetailPage, meta: { requiresAuth: true } },
     { path: "/favorites", component: FavoritesPage, meta: { requiresAuth: true } },
     { path: "/create", component: CreateNotePage, meta: { requiresAuth: true } },
+    { path: "/settings", component: SettingsPage, meta: { requiresAuth: true } },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
 });

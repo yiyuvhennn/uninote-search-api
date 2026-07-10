@@ -18,7 +18,7 @@ const isFavorited = ref(props.initialFavorited ?? false);
 const actionLoading = ref(false);
 
 const accentClass = computed(() => {
-  const list = ["accent-blue", "accent-lime", "accent-orange", "accent-pink", "accent-cyan"];
+  const list = ["accent-blue", "accent-green", "accent-amber", "accent-rose", "accent-cyan"];
   return list[props.note.id % list.length];
 });
 
@@ -116,53 +116,32 @@ async function handleDelete() {
 <style scoped>
 .note-card {
   position: relative;
-  min-height: 310px;
-  padding: 24px;
+  min-height: 292px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 32px;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.72)),
-    var(--accent-bg);
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.1);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--accent);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: var(--shadow-soft);
   overflow: hidden;
-  transition: 0.24s ease;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
 .note-card:hover {
-  transform: translateY(-6px) rotate(-0.2deg);
-  box-shadow: 0 34px 80px rgba(15, 23, 42, 0.16);
+  transform: translateY(-2px);
+  border-color: #cfd6e1;
+  box-shadow: var(--shadow-hard);
 }
 
-.note-card::after {
-  content: "";
-  position: absolute;
-  width: 160px;
-  height: 160px;
-  right: -70px;
-  top: -70px;
-  border-radius: 50%;
-  background: var(--accent);
-  opacity: 0.16;
-}
+.note-card__pin { display: none; }
 
-.note-card__pin {
-  position: absolute;
-  top: 16px;
-  right: 22px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 18%, transparent);
-}
-
-.accent-blue { --accent: #3867ff; --accent-bg: #eff6ff; }
-.accent-lime { --accent: #84cc16; --accent-bg: #f7fee7; }
-.accent-orange { --accent: #fb923c; --accent-bg: #fff7ed; }
-.accent-pink { --accent: #ec4899; --accent-bg: #fdf2f8; }
-.accent-cyan { --accent: #06b6d4; --accent-bg: #ecfeff; }
+.accent-blue { --accent: #2f6fed; }
+.accent-green { --accent: #16a34a; }
+.accent-amber { --accent: #d97706; }
+.accent-rose { --accent: #c9467d; }
+.accent-cyan { --accent: #0ea5a4; }
 
 .note-card__top {
   position: relative;
@@ -170,6 +149,7 @@ async function handleDelete() {
   display: flex;
   justify-content: space-between;
   gap: 12px;
+  align-items: flex-start;
 }
 
 .course,
@@ -177,46 +157,46 @@ async function handleDelete() {
   display: inline-flex;
   align-items: center;
   margin-right: 7px;
-  padding: 7px 10px;
+  padding: 6px 9px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 950;
+  font-weight: 750;
 }
 
-.course { color: white; background: var(--accent); }
-.date { color: #475569; background: rgba(255, 255, 255, 0.78); border: 1px solid rgba(148, 163, 184, 0.22); }
+.course { color: color-mix(in srgb, var(--accent) 72%, #111827); background: color-mix(in srgb, var(--accent) 10%, white); }
+.date { color: var(--muted); background: #f9fafb; border: 1px solid var(--line); }
 
 .favorite {
   position: relative;
   z-index: 1;
-  border: 0;
-  border-radius: 999px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   padding: 8px 11px;
-  color: #475569;
-  background: rgba(255, 255, 255, 0.8);
+  color: #475467;
+  background: #ffffff;
   font-size: 12px;
-  font-weight: 950;
+  font-weight: 750;
 }
-.favorite.active { color: #854d0e; background: #fef3c7; }
+.favorite.active { color: #92400e; background: #fffbeb; border-color: #fde68a; }
 
-.title-link { position: relative; z-index: 1; margin-top: 26px; color: inherit; text-decoration: none; }
-h3 { margin: 0; color: #0f172a; font-size: 27px; line-height: 1.18; letter-spacing: -0.055em; }
+.title-link { position: relative; z-index: 1; margin-top: 22px; color: inherit; text-decoration: none; }
+h3 { margin: 0; color: var(--ink); font-size: 23px; line-height: 1.25; letter-spacing: 0; }
 .title-link:hover h3 { color: var(--accent); }
-.description { position: relative; z-index: 1; flex: 1; margin: 14px 0 18px; color: #5b6678; line-height: 1.78; }
+.description { position: relative; z-index: 1; flex: 1; margin: 12px 0 16px; color: var(--muted); line-height: 1.75; }
 
 .tag-cloud { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
-.tag-cloud span { padding: 6px 9px; border-radius: 999px; color: #334155; background: rgba(255, 255, 255, 0.76); font-size: 12px; font-weight: 900; }
+.tag-cloud span { padding: 5px 8px; border-radius: 999px; color: #344054; background: #f2f4f7; font-size: 12px; font-weight: 700; }
 
 .mini-metrics { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 18px; }
-.mini-metrics div { padding: 12px; border-radius: 18px; background: rgba(255, 255, 255, 0.7); border: 1px solid rgba(148, 163, 184, 0.2); }
-.mini-metrics span { display: block; color: #94a3b8; font-size: 10px; font-weight: 1000; letter-spacing: 0.1em; text-transform: uppercase; }
-.mini-metrics strong { display: block; margin-top: 3px; color: #111827; font-size: 20px; }
+.mini-metrics div { padding: 10px; border-radius: 10px; background: #f9fafb; border: 1px solid var(--line); }
+.mini-metrics span { display: block; color: var(--subtle); font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.mini-metrics strong { display: block; margin-top: 3px; color: var(--ink); font-size: 18px; }
 
 .note-card__actions { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 9px; }
 .open-action,
 .file-action,
-.delete-action { min-height: 38px; padding: 0 13px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 999px; font-size: 13px; font-weight: 950; text-decoration: none; }
-.open-action { color: white; background: #111827; }
-.file-action { color: #111827; background: rgba(255, 255, 255, 0.82); }
-.delete-action { color: #be123c; background: #fff1f2; }
+.delete-action { min-height: 36px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-weight: 750; text-decoration: none; }
+.open-action { color: white; background: var(--ink); border-color: var(--ink); }
+.file-action { color: var(--ink); background: #ffffff; }
+.delete-action { color: #b42318; background: #fff5f6; border-color: #fecdd3; }
 </style>
