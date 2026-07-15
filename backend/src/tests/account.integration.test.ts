@@ -1,7 +1,6 @@
-import { rmSync } from "node:fs";
-import path from "node:path";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { resetTestDatabase, setupTestEnv } from "./testDb";
 
 type TestApp = Awaited<typeof import("../app")>["default"];
 type TestPrisma = Awaited<typeof import("../lib/prisma")>["prisma"];
@@ -10,68 +9,6 @@ let app: TestApp;
 let prisma: TestPrisma;
 
 const password = "123456";
-
-async function createTestSchema(db: TestPrisma) {
-  await db.$executeRawUnsafe("PRAGMA foreign_keys=ON");
-  await db.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "User" (
-      "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-      "name" TEXT NOT NULL,
-      "email" TEXT NOT NULL UNIQUE,
-      "password" TEXT NOT NULL,
-      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" DATETIME NOT NULL
-    )
-  `);
-  await db.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "Note" (
-      "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-      "title" TEXT NOT NULL,
-      "description" TEXT,
-      "content" TEXT,
-      "searchText" TEXT,
-      "fileUrl" TEXT NOT NULL,
-      "course" TEXT NOT NULL,
-      "category" TEXT,
-      "visibility" TEXT NOT NULL DEFAULT 'PUBLIC',
-      "views" INTEGER NOT NULL DEFAULT 0,
-      "likes" INTEGER NOT NULL DEFAULT 0,
-      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" DATETIME NOT NULL,
-      "authorId" INTEGER NOT NULL,
-      CONSTRAINT "Note_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-    )
-  `);
-  await db.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "Tag" (
-      "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-      "name" TEXT NOT NULL UNIQUE
-    )
-  `);
-  await db.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "NoteTag" (
-      "noteId" INTEGER NOT NULL,
-      "tagId" INTEGER NOT NULL,
-      PRIMARY KEY ("noteId", "tagId"),
-      CONSTRAINT "NoteTag_noteId_fkey" FOREIGN KEY ("noteId") REFERENCES "Note" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-      CONSTRAINT "NoteTag_tagId_fkey" FOREIGN KEY ("tagId") REFERENCES "Tag" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-    )
-  `);
-  await db.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "Favorite" (
-      "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-      "userId" INTEGER NOT NULL,
-      "noteId" INTEGER NOT NULL,
-      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      CONSTRAINT "Favorite_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-      CONSTRAINT "Favorite_noteId_fkey" FOREIGN KEY ("noteId") REFERENCES "Note" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-    )
-  `);
-  await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Note_course_idx" ON "Note"("course")`);
-  await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Note_category_idx" ON "Note"("category")`);
-  await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Note_createdAt_idx" ON "Note"("createdAt")`);
-  await db.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "Favorite_userId_noteId_key" ON "Favorite"("userId", "noteId")`);
-}
 
 async function resetData() {
   await prisma.favorite.deleteMany();
@@ -136,17 +73,9 @@ function titlesFromSearch(res: request.Response) {
 }
 
 beforeAll(async () => {
-  process.env.NODE_ENV = "test";
-  process.env.DATABASE_URL = "file:./test.db";
-  process.env.JWT_SECRET = "integration_test_secret";
-  process.env.FRONTEND_URL = "http://localhost:5173";
-
-  rmSync(path.resolve(process.cwd(), "prisma", "test.db"), {
-    force: true,
-  });
-
+  setupTestEnv();
+  resetTestDatabase();
   prisma = (await import("../lib/prisma")).prisma;
-  await createTestSchema(prisma);
   app = (await import("../app")).default;
 });
 
