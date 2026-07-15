@@ -92,6 +92,31 @@ async function savePassword() {
   passwordMessage.value = "";
   passwordError.value = "";
 
+  if (!currentPassword.value.trim()) {
+    passwordError.value = "請輸入目前密碼";
+    return;
+  }
+
+  if (!newPassword.value.trim()) {
+    passwordError.value = "請輸入新密碼";
+    return;
+  }
+
+  if (!confirmPassword.value.trim()) {
+    passwordError.value = "請再次輸入新密碼";
+    return;
+  }
+
+  if (newPassword.value.length < 6) {
+    passwordError.value = "新密碼至少需要 6 碼";
+    return;
+  }
+
+  if (newPassword.value !== confirmPassword.value) {
+    passwordError.value = "新密碼與確認密碼不一致";
+    return;
+  }
+
   savingPassword.value = true;
 
   try {
@@ -114,6 +139,11 @@ async function savePassword() {
 
 async function deleteAccount() {
   deleteError.value = "";
+
+  if (!deletePassword.value.trim()) {
+    deleteError.value = "請輸入目前密碼";
+    return;
+  }
 
   if (confirmText.value !== "DELETE") {
     deleteError.value = "請輸入 DELETE 以確認刪除帳號";
