@@ -415,7 +415,7 @@ backend/.env.example
 provider = "postgresql"
 ```
 
-SQLite migration history 已保留在備份資料夾；本分支的 Prisma runtime、seed 與 migration 目標是 PostgreSQL。Integration tests 仍待下一階段遷移到 PostgreSQL test DB。
+SQLite migration history 已保留在備份資料夾；本分支的 Prisma runtime、seed、migration 與 integration tests 目標都是 PostgreSQL。
 
 PostgreSQL dev/test database 規劃：
 
@@ -490,6 +490,22 @@ npx prisma generate
 npm run seed
 npm run dev
 ```
+
+執行 integration tests：
+
+```bash
+npm test
+```
+
+目前 tests 會使用 `TEST_DATABASE_URL` 指向 `uninote_test`，並在測試前透過 Prisma migrations 重建 test schema，不會使用 production seed。
+
+Production-like migration 驗證可使用乾淨 database 執行：
+
+```bash
+npx prisma migrate deploy
+```
+
+正式 production 部署應使用 `prisma migrate deploy`，不要使用 `prisma migrate dev`。
 
 Backend 預設：
 
@@ -788,7 +804,7 @@ tags: 標籤，可選
 - 搜尋使用 SQL contains，不是正式全文檢索引擎
 - Ranking 是 rule-based scoring，不是機器學習排序
 - Cache 使用 in-memory，server 重啟後會消失
-- PostgreSQL branch 尚未完成 integration tests 遷移，下一階段會改用 PostgreSQL test DB
+- Integration tests 需要本機 PostgreSQL container 與 `uninote_test` database
 - 尚未建立 SearchEvent、ClickEvent、DownloadEvent 等行為紀錄
 - 尚未做 A/B Testing 或 CTR 評估
 - PDF 解析僅支援文字型 PDF，尚未支援掃描型 PDF / OCR
