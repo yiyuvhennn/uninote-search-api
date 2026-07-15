@@ -8,17 +8,46 @@ import {
   extractTextFromPdf,
   PdfParseError,
 } from "../services/pdfParserService";
+import {
+  sanitizeOriginalFilename,
+  validatePdfExtension,
+  validatePdfMagicNumber,
+  validatePdfMimeType,
+} from "../utils/fileValidation";
 
 const router = Router();
 type NoteScope = "all" | "mine" | "public";
 
+/**
+ * getMaxUploadMb
+ *
+ * 從環境變數讀取 PDF 上傳大小限制；若未設定或設定錯誤，預設使用 10MB。
+ */
+function getMaxUploadMb() {
+  const value = Number(process.env.MAX_UPLOAD_MB);
+
+  if (Number.isFinite(value) && value > 0) {
+    return value;
+  }
+
+  return 10;
+}
+
+const maxUploadMb = getMaxUploadMb();
+const maxUploadBytes = maxUploadMb * 1024 * 1024;
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024,
+    fileSize: maxUploadBytes,
   },
   fileFilter: (_req, file, callback) => {
-    if (file.mimetype !== "application/pdf") {
+    if (!validatePdfExtension(file.originalname)) {
+      callback(new Error("只支援 .pdf 副檔名，請重新選擇 PDF 檔案。"));
+      return;
+    }
+
+    if (!validatePdfMimeType(file.mimetype)) {
       callback(new Error("只支援 PDF 檔案，請重新選擇 .pdf 檔。"));
       return;
     }
@@ -43,10 +72,10 @@ const uploadPdfFile = (req: Request, res: Response, next: NextFunction) => {
     if (error instanceof multer.MulterError) {
       const message =
         error.code === "LIMIT_FILE_SIZE"
-          ? "PDF 檔案太大，請上傳 10MB 以下的檔案。"
+          ? `PDF 檔案太大，請上傳 ${maxUploadMb}MB 以下的檔案。`
           : "PDF 上傳失敗，請重新選擇檔案。";
 
-      res.status(400).json({ message });
+      res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ message });
       return;
     }
 
@@ -281,16 +310,23 @@ router.post(
         });
       }
 
+      if (!validatePdfMagicNumber(req.file.buffer)) {
+        return res.status(400).json({
+          message: "PDF 檔案內容格式不正確，請確認檔案不是偽裝成 PDF 的其他檔案。",
+        });
+      }
+
       const content = await extractTextFromPdf(req.file);
       const tags = parseTagsInput(req.body.tags);
+      const safeFilename = sanitizeOriginalFilename(req.file.originalname);
       const title =
         String(req.body.title || "").trim() ||
-        req.file.originalname.replace(/\.pdf$/i, "");
+        safeFilename.replace(/\.pdf$/i, "");
       const course = String(req.body.course || "未指定課程").trim();
       const category = String(req.body.category || "PDF 匯入").trim();
       const visibility = normalizeVisibility(req.body.visibility);
       const description = "由 PDF 匯入";
-      const fileUrl = `uploaded-pdf:${req.file.originalname}`;
+      const fileUrl = `uploaded-pdf:${Date.now()}-${safeFilename}`;
 
       const note = await prisma.note.create({
         data: {

@@ -392,6 +392,10 @@ DATABASE_URL="file:./dev.db"
 JWT_SECRET="dev_only_change_me"
 FRONTEND_URL="http://localhost:5173"
 MAX_UPLOAD_MB=10
+API_RATE_LIMIT_WINDOW_MS=900000
+API_RATE_LIMIT_MAX=300
+AUTH_RATE_LIMIT_WINDOW_MS=900000
+AUTH_RATE_LIMIT_MAX=20
 ```
 
 也可以參考：
@@ -467,10 +471,12 @@ http://localhost:5173
 - 關閉 Express `x-powered-by` fingerprint
 - CORS 不再全開，只允許 `FRONTEND_URL`
 - development 若未設定 `FRONTEND_URL`，預設允許 `http://localhost:5173`
-- 一般 API rate limit：15 分鐘 300 次
-- auth API rate limit：15 分鐘 20 次
+- 一般 API rate limit 預設為 15 分鐘 300 次，可用 `API_RATE_LIMIT_WINDOW_MS`、`API_RATE_LIMIT_MAX` 調整
+- auth API rate limit 預設為 15 分鐘 20 次，可用 `AUTH_RATE_LIMIT_WINDOW_MS`、`AUTH_RATE_LIMIT_MAX` 調整
 - 未匹配路由統一回傳 `{ "error": "Route not found" }`
 - 全域錯誤處理在 production 不回傳 stack trace
+
+`FRONTEND_URL` 必須設定成實際前端網址。Production 若沒有設定正確來源，瀏覽器會因 CORS 白名單拒絕跨來源請求。
 
 ### 筆記可見性模式
 
@@ -518,6 +524,10 @@ DATABASE_URL="file:./dev.db"
 JWT_SECRET="replace_with_a_long_random_secret"
 FRONTEND_URL="https://your-frontend-domain.com"
 MAX_UPLOAD_MB=10
+API_RATE_LIMIT_WINDOW_MS=900000
+API_RATE_LIMIT_MAX=300
+AUTH_RATE_LIMIT_WINDOW_MS=900000
+AUTH_RATE_LIMIT_MAX=20
 ```
 
 注意：
