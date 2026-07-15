@@ -76,7 +76,7 @@ UniNote Search API MVP
 - Express.js
 - TypeScript
 - Prisma ORM
-- SQLite
+- PostgreSQL
 - JWT Authentication
 - in-memory cache
 
@@ -388,7 +388,8 @@ npm install
 ```env
 NODE_ENV=development
 PORT=3000
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="postgresql://uninote:uninote_password@localhost:55432/uninote_dev?schema=public"
+TEST_DATABASE_URL="postgresql://uninote:uninote_password@localhost:55432/uninote_test?schema=public"
 JWT_SECRET="dev_only_change_me"
 FRONTEND_URL="http://localhost:5173"
 MAX_UPLOAD_MB=10
@@ -406,13 +407,79 @@ backend/.env.example
 
 `JWT_SECRET` 在本機可以使用測試值，但 production 一定要換成長且隨機的 secret，不可以使用 README 範例值或 `dev_secret`。
 
-SQLite 檔案會建立在：
+### PostgreSQL Local Environment
 
-```txt
-backend/prisma/dev.db
+此 PostgreSQL schema branch 使用：
+
+```prisma
+provider = "postgresql"
 ```
 
-這是 Prisma 對 SQLite 相對路徑的預設行為：`file:./dev.db` 會以 `prisma/schema.prisma` 所在資料夾為基準。
+SQLite migration history 已保留在備份資料夾；本分支的 Prisma runtime、seed 與 migration 目標是 PostgreSQL。Integration tests 仍待下一階段遷移到 PostgreSQL test DB。
+
+PostgreSQL dev/test database 規劃：
+
+```txt
+dev DB:  uninote_dev
+test DB: uninote_test
+```
+
+啟動 PostgreSQL container：
+
+```bash
+docker compose up -d
+```
+
+如果人在 `backend/` 目錄，也可以使用：
+
+```bash
+npm run db:pg:up
+```
+
+查看 container 狀態：
+
+```bash
+docker compose ps
+```
+
+查看 PostgreSQL logs：
+
+```bash
+docker compose logs -f postgres
+```
+
+或在 `backend/` 目錄使用：
+
+```bash
+npm run db:pg:logs
+```
+
+停止 container：
+
+```bash
+docker compose down
+```
+
+或在 `backend/` 目錄使用：
+
+```bash
+npm run db:pg:down
+```
+
+建立 test database：
+
+```bash
+docker exec -it uninote-postgres psql -U uninote -d uninote_dev -c "CREATE DATABASE uninote_test;"
+```
+
+如果 database 已存在，PostgreSQL 會回報已存在錯誤；這代表不需要重建。
+
+本機 `.env` 使用：
+
+```env
+DATABASE_URL="postgresql://uninote:uninote_password@localhost:55432/uninote_dev?schema=public"
+TEST_DATABASE_URL="postgresql://uninote:uninote_password@localhost:55432/uninote_test?schema=public"
+```
 
 執行 Prisma：
 
@@ -520,7 +587,7 @@ Production 環境至少需要設定：
 ```env
 NODE_ENV=production
 PORT=3000
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="postgresql://<user>:<password>@<host>:5432/<database>?schema=public"
 JWT_SECRET="replace_with_a_long_random_secret"
 FRONTEND_URL="https://your-frontend-domain.com"
 MAX_UPLOAD_MB=10
@@ -535,6 +602,12 @@ AUTH_RATE_LIMIT_MAX=20
 - production 不可以使用 `dev_secret`、`dev_only_change_me` 或任何範例 secret。
 - production 不建議使用 `prisma migrate dev`，正式部署應使用 `prisma migrate deploy`。
 - seed 資料只適合本機展示，不應自動跑到 production。
+
+Production migration 指令：
+
+```bash
+npm run prisma:deploy
+```
 
 ---
 
@@ -715,7 +788,7 @@ tags: 標籤，可選
 - 搜尋使用 SQL contains，不是正式全文檢索引擎
 - Ranking 是 rule-based scoring，不是機器學習排序
 - Cache 使用 in-memory，server 重啟後會消失
-- SQLite 適合本機展示，不適合正式大型部署
+- PostgreSQL branch 尚未完成 integration tests 遷移，下一階段會改用 PostgreSQL test DB
 - 尚未建立 SearchEvent、ClickEvent、DownloadEvent 等行為紀錄
 - 尚未做 A/B Testing 或 CTR 評估
 - PDF 解析僅支援文字型 PDF，尚未支援掃描型 PDF / OCR
