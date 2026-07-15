@@ -1,15 +1,9 @@
 import "dotenv/config";
 import bcrypt from "bcrypt";
 import { PrismaClient } from "@prisma/client";
-import { PrismaBetterSQLite3 } from "@prisma/adapter-better-sqlite3";
 import { buildSearchText } from "../src/utils/textProcessing";
-import { resolvePrismaSqliteUrl } from "../src/lib/sqlitePath";
 
-const adapter = new PrismaBetterSQLite3({
-  url: resolvePrismaSqliteUrl(process.env.DATABASE_URL!),
-});
-
-const prisma = new PrismaClient({ adapter });
+const prisma = new PrismaClient();
 const sampleNotes = [
   {
     title: "微積分期中考重點整理",
