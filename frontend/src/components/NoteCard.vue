@@ -6,6 +6,7 @@ import api from "../services/api";
 const props = defineProps<{
   note: Note;
   initialFavorited?: boolean;
+  isOwner?: boolean;
   showDeleteButton?: boolean;
 }>();
 
@@ -22,8 +23,26 @@ const accentClass = computed(() => {
   return list[props.note.id % list.length];
 });
 
-const tagList = computed(() => props.note.tags || []);
+const tagList = computed(() =>
+  (props.note.tags || [])
+    .map((item: any) => item?.name ? item : item?.tag)
+    .filter((item): item is { id: number; name: string } => Boolean(item?.name))
+);
+const visibleTags = computed(() => tagList.value.slice(0, 3));
+const hiddenTagCount = computed(() => Math.max(tagList.value.length - visibleTags.value.length, 0));
 const favoriteTotal = computed(() => props.note.favoriteCount ?? props.note.favorites?.length ?? 0);
+const visibilityLabel = computed(() => (props.note.visibility === "PRIVATE" ? "私人" : "公開"));
+const isOwner = computed(() => props.isOwner ?? Boolean(props.showDeleteButton));
+const canDelete = computed(() => Boolean(props.showDeleteButton));
+const referenceLink = computed(() => {
+  const value = props.note.fileUrl?.trim();
+
+  if (!value || value.startsWith("uploaded-pdf:")) {
+    return "";
+  }
+
+  return /^https?:\/\//i.test(value) ? value : "";
+});
 
 function formatDate(date?: string) {
   if (!date) return "未記錄";
@@ -71,11 +90,13 @@ async function handleDelete() {
 
 <template>
   <article :class="['note-card', accentClass]">
-    <div class="note-card__pin"></div>
-
     <header class="note-card__top">
-      <div>
+      <div class="meta-row">
         <span class="course">{{ note.course || "未分類課程" }}</span>
+        <span :class="['visibility-badge', note.visibility === 'PRIVATE' ? 'private' : 'public']">
+          {{ visibilityLabel }}
+        </span>
+        <span v-if="isOwner" class="owner-badge">我的筆記</span>
         <span class="date">{{ formatDate(note.updatedAt || note.createdAt) }}</span>
       </div>
 
@@ -85,7 +106,7 @@ async function handleDelete() {
         :disabled="actionLoading"
         @click="toggleFavorite"
       >
-        {{ isFavorited ? "收藏中" : "收藏" }}
+        {{ isFavorited ? "已收藏" : "收藏" }}
       </button>
     </header>
 
@@ -95,20 +116,24 @@ async function handleDelete() {
 
     <p class="description">{{ note.description || "這篇筆記尚未補上描述，可以從內容或檔案連結進一步查看。" }}</p>
 
-    <div class="tag-cloud" v-if="tagList.length">
-      <span v-for="tag in tagList.slice(0, 4)" :key="tag.id">#{{ tag.name }}</span>
+    <div class="tag-cloud" v-if="visibleTags.length">
+      <span v-for="tag in visibleTags" :key="tag.id">#{{ tag.name }}</span>
+      <span v-if="hiddenTagCount > 0" class="more-tags">+{{ hiddenTagCount }}</span>
     </div>
 
     <div class="mini-metrics">
-      <div><span>Views</span><strong>{{ note.views ?? 0 }}</strong></div>
-      <div><span>Likes</span><strong>{{ note.likes ?? 0 }}</strong></div>
-      <div><span>Fav</span><strong>{{ favoriteTotal }}</strong></div>
+      <div><span>瀏覽</span><strong>{{ note.views ?? 0 }}</strong></div>
+      <div><span>按讚</span><strong>{{ note.likes ?? 0 }}</strong></div>
+      <div><span>收藏</span><strong>{{ favoriteTotal }}</strong></div>
     </div>
 
     <footer class="note-card__actions">
-      <router-link :to="`/notes/${note.id}`" class="open-action">閱讀</router-link>
-      <a v-if="note.fileUrl" :href="note.fileUrl" target="_blank" class="file-action">檔案</a>
-      <button v-if="showDeleteButton" type="button" class="delete-action" :disabled="actionLoading" @click="handleDelete">刪除</button>
+      <div class="primary-actions">
+        <router-link :to="`/notes/${note.id}`" class="open-action">閱讀</router-link>
+        <a v-if="referenceLink" :href="referenceLink" target="_blank" rel="noreferrer" class="file-action">參考連結</a>
+      </div>
+
+      <button v-if="canDelete" type="button" class="delete-action" :disabled="actionLoading" @click="handleDelete">刪除</button>
     </footer>
   </article>
 </template>
@@ -135,28 +160,36 @@ async function handleDelete() {
   box-shadow: var(--shadow-hard);
 }
 
-.note-card__pin { display: none; }
-
 .accent-blue { --accent: #2f6fed; }
 .accent-green { --accent: #16a34a; }
 .accent-amber { --accent: #d97706; }
 .accent-rose { --accent: #c9467d; }
 .accent-cyan { --accent: #0ea5a4; }
 
-.note-card__top {
+.note-card__top,
+.meta-row {
   position: relative;
   z-index: 1;
   display: flex;
+}
+
+.note-card__top {
   justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
 }
 
+.meta-row {
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
 .course,
-.date {
+.date,
+.visibility-badge,
+.owner-badge {
   display: inline-flex;
   align-items: center;
-  margin-right: 7px;
   padding: 6px 9px;
   border-radius: 999px;
   font-size: 12px;
@@ -165,6 +198,9 @@ async function handleDelete() {
 
 .course { color: color-mix(in srgb, var(--accent) 72%, #111827); background: color-mix(in srgb, var(--accent) 10%, white); }
 .date { color: var(--muted); background: #f9fafb; border: 1px solid var(--line); }
+.visibility-badge.public { color: #047857; background: #ecfdf3; border: 1px solid #bbf7d0; }
+.visibility-badge.private { color: #7c2d12; background: #fff7ed; border: 1px solid #fed7aa; }
+.owner-badge { color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; }
 
 .favorite {
   position: relative;
@@ -186,17 +222,38 @@ h3 { margin: 0; color: var(--ink); font-size: 23px; line-height: 1.25; letter-sp
 
 .tag-cloud { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .tag-cloud span { padding: 5px 8px; border-radius: 999px; color: #344054; background: #f2f4f7; font-size: 12px; font-weight: 700; }
+.tag-cloud .more-tags { color: #1d4ed8; background: #eff6ff; }
 
 .mini-metrics { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 18px; }
 .mini-metrics div { padding: 10px; border-radius: 10px; background: #f9fafb; border: 1px solid var(--line); }
 .mini-metrics span { display: block; color: var(--subtle); font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
 .mini-metrics strong { display: block; margin-top: 3px; color: var(--ink); font-size: 18px; }
 
-.note-card__actions { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 9px; }
+.note-card__actions { position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.primary-actions { display: flex; flex-wrap: wrap; gap: 9px; }
 .open-action,
 .file-action,
 .delete-action { min-height: 36px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-weight: 750; text-decoration: none; }
 .open-action { color: white; background: var(--ink); border-color: var(--ink); }
 .file-action { color: var(--ink); background: #ffffff; }
-.delete-action { color: #b42318; background: #fff5f6; border-color: #fecdd3; }
+.delete-action { min-height: 32px; color: #b42318; background: transparent; border-color: transparent; }
+.delete-action:hover { background: #fff5f6; border-color: #fecdd3; }
+
+@media (max-width: 560px) {
+  .note-card { min-height: 0; padding: 16px; }
+  .note-card__top,
+  .note-card__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .favorite,
+  .open-action,
+  .file-action,
+  .delete-action {
+    width: 100%;
+  }
+  .mini-metrics {
+    grid-template-columns: 1fr;
+  }
+}
 </style>

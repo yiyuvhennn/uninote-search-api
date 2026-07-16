@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import api from "../services/api";
 import type { Note, SearchMeta, SearchResponse } from "../types/note";
 
@@ -9,7 +9,7 @@ type SearchScope = "all" | "mine" | "public";
 const notes = ref<Note[]>([]);
 const meta = ref<SearchMeta | null>(null);
 
-const keyword = ref("微積分");
+const keyword = ref("");
 const course = ref("");
 const category = ref("");
 const tag = ref("");
@@ -22,111 +22,32 @@ const pageSize = 10;
 const loading = ref(false);
 const errorMessage = ref("");
 const showAdvancedFilters = ref(false);
+const hasSearched = ref(false);
+const actionLoadingId = ref<number | null>(null);
 
-const quickKeywords = [
-  "微積分",
-  "工程數學",
-  "熱力學",
-  "自動控制",
-  "材料力學",
-  "流體力學",
-  "機械設計",
-  "期中考",
-  "考古題",
+const quickKeywords = ["微積分", "資料庫", "傅立葉", "期中考", "工程數學", "自動控制", "考古題"];
+
+const sortOptions: Array<{ label: string; value: SortMode }> = [
+  { label: "相關度", value: "relevance" },
+  { label: "最新", value: "latest" },
+  { label: "熱門", value: "popular" },
 ];
 
-const sortOptions: Array<{
-  label: string;
-  value: SortMode;
-  description: string;
-}> = [
-  {
-    label: "相關度",
-    value: "relevance",
-    description: "依 Ranking Score 排序",
-  },
-  {
-    label: "最新",
-    value: "latest",
-    description: "依建立時間排序",
-  },
-  {
-    label: "熱門",
-    value: "popular",
-    description: "依瀏覽、按讚、收藏排序",
-  },
+const scopeOptions: Array<{ label: string; value: SearchScope }> = [
+  { label: "全部可見", value: "all" },
+  { label: "我的筆記", value: "mine" },
+  { label: "公開筆記", value: "public" },
 ];
 
-const scopeOptions: Array<{
-  label: string;
-  value: SearchScope;
-  description: string;
-}> = [
-  {
-    label: "全部可見",
-    value: "all",
-    description: "自己的筆記 + 公開筆記",
-  },
-  {
-    label: "我的筆記",
-    value: "mine",
-    description: "只搜尋自己建立的筆記",
-  },
-  {
-    label: "公開筆記",
-    value: "public",
-    description: "只搜尋共享筆記庫",
-  },
-];
-
+const activeFilterCount = computed(() => [course.value, category.value, tag.value].filter(Boolean).length);
+const hasQueryCondition = computed(() => Boolean(keyword.value.trim() || course.value.trim() || category.value.trim() || tag.value.trim()));
 const totalResultText = computed(() => {
-  if (!meta.value) return "準備搜尋";
-  return `${meta.value.total} 筆結果｜第 ${meta.value.page} / ${meta.value.totalPages} 頁`;
+  if (!hasSearched.value || !meta.value) return "尚未搜尋";
+  return `${meta.value.total} 筆結果`;
 });
-
-const cacheLabel = computed(() => {
-  if (!meta.value) return "Waiting";
-  return meta.value.cache === "hit" ? "Cache Hit" : "Cache Miss";
-});
-
-const cacheClass = computed(() => {
-  if (!meta.value) return "idle";
-  return meta.value.cache === "hit" ? "hit" : "miss";
-});
-
-const activeFilterCount = computed(() => {
-  return [course.value, category.value, tag.value].filter(Boolean).length;
-});
-
-const hasQueryCondition = computed(() => {
-  return Boolean(
-    keyword.value.trim() ||
-      course.value.trim() ||
-      category.value.trim() ||
-      tag.value.trim()
-  );
-});
-
-const topScore = computed(() => {
-  return Math.max(...notes.value.map((note) => note.score ?? 0), 0);
-});
-
-function formatScore(value?: number) {
-  if (value === undefined || Number.isNaN(value)) return "0.00";
-  return value.toFixed(2);
-}
-
-function formatPercent(value?: number) {
-  if (value === undefined || Number.isNaN(value)) return "0";
-  return Math.round(value).toString();
-}
-
-function scoreWidth(value?: number) {
-  const score = value ?? 0;
-  const maxScore = Math.max(topScore.value, 1);
-
-  return `${Math.min((score / maxScore) * 100, 100)}%`;
-}
+const currentScopeLabel = computed(() => scopeOptions.find((option) => option.value === (meta.value?.scope ?? scope.value))?.label ?? "全部可見");
+const currentSortLabel = computed(() => sortOptions.find((option) => option.value === (meta.value?.sort ?? sort.value))?.label ?? "相關度");
+const topScore = computed(() => Math.max(...notes.value.map((note) => note.score ?? 0), 1));
 
 function getScoreLevel(score?: number) {
   const value = score ?? 0;
@@ -136,65 +57,66 @@ function getScoreLevel(score?: number) {
   if (value >= 40) return "部分相關";
   if (value > 0) return "低度相關";
 
-  return "尚無分數";
+  return "待判斷";
 }
 
-function getMainReason(note: Note) {
+function scoreWidth(score?: number) {
+  return `${Math.min(((score ?? 0) / topScore.value) * 100, 100)}%`;
+}
+
+function visibleTags(note: Note) {
+  return (note.tags || []).slice(0, 3);
+}
+
+function hiddenTagCount(note: Note) {
+  return Math.max((note.tags?.length || 0) - visibleTags(note).length, 0);
+}
+
+function isFavorited(note: Note) {
+  return Boolean(note.favorites?.length);
+}
+
+function getReasonItems(note: Note) {
   const detail = note.scoreDetail;
+  if (!detail) return [];
 
-  if (!detail) return "尚未取得 scoreBreakdown";
+  const reasons: string[] = [];
 
-  const signals = [
-    {
-      label: "標題命中",
-      value: detail.titleMatch,
-    },
-    {
-      label: "課程命中",
-      value: detail.courseMatch,
-    },
-    {
-      label: "標籤命中",
-      value: detail.tagMatch,
-    },
-    {
-      label: "分類命中",
-      value: detail.categoryMatch,
-    },
-    {
-      label: "內容命中",
-      value: detail.contentMatch,
-    },
-    {
-      label: "文字相似度",
-      value: detail.textSimilarity ?? 0,
-    },
-    {
-      label: "熱門度",
-      value: detail.popularity,
-    },
-    {
-      label: "品質分數",
-      value: detail.quality,
-    },
-    {
-      label: "新鮮度",
-      value: detail.recency,
-    },
-  ];
-
-  const bestSignal = signals.sort((a, b) => b.value - a.value)[0];
-
-  if (!bestSignal || bestSignal.value <= 0) {
-    return "主要由資料完整度與排序規則決定";
+  if ((detail.titleMatch ?? 0) > 0 || (detail.contentMatch ?? 0) > 0 || (detail.descriptionMatch ?? 0) > 0) {
+    reasons.push("標題、描述或內容與關鍵字相符。");
   }
 
-  return `主要原因：${bestSignal.label} ${Math.round(bestSignal.value)} 分`;
+  if ((detail.textSimilarity ?? 0) > 0) {
+    reasons.push("筆記文字與搜尋內容有明顯相符。");
+  }
+
+  if ((detail.courseMatch ?? 0) > 0) {
+    reasons.push("屬於你指定或搜尋到的課程。");
+  }
+
+  if ((detail.tagMatch ?? 0) > 0 || (detail.categoryMatch ?? 0) > 0) {
+    reasons.push("標籤或分類符合搜尋條件。");
+  }
+
+  if ((detail.recency ?? 0) > 0) {
+    reasons.push("這篇筆記最近有更新。");
+  }
+
+  if ((detail.popularity ?? 0) > 0) {
+    reasons.push("收藏、瀏覽或按讚熱度較高。");
+  }
+
+  if (!reasons.length && (detail.quality ?? 0) > 0) {
+    reasons.push("筆記資訊較完整，適合先閱讀。");
+  }
+
+  return reasons.slice(0, 5);
 }
 
 async function fetchSearchResults() {
   loading.value = true;
   errorMessage.value = "";
+  hasSearched.value = true;
 
   try {
     const res = await api.get<SearchResponse>("/search", {
@@ -214,8 +136,7 @@ async function fetchSearchResults() {
     meta.value = res.data.meta;
   } catch (error) {
     console.error(error);
-    errorMessage.value =
-      "搜尋失敗，請確認後端已啟動，並完成 Prisma migration / seed。";
+    errorMessage.value = "目前無法完成搜尋，請稍後再試。";
   } finally {
     loading.value = false;
   }
@@ -234,14 +155,18 @@ function applyQuickKeyword(value: string) {
 
 function changeSort(nextSort: SortMode) {
   sort.value = nextSort;
-  page.value = 1;
-  fetchSearchResults();
+  if (hasSearched.value) {
+    page.value = 1;
+    fetchSearchResults();
+  }
 }
 
 function changeScope(nextScope: SearchScope) {
   scope.value = nextScope;
-  page.value = 1;
-  fetchSearchResults();
+  if (hasSearched.value) {
+    page.value = 1;
+    fetchSearchResults();
+  }
 }
 
 function clearAdvancedFilters() {
@@ -249,7 +174,7 @@ function clearAdvancedFilters() {
   category.value = "";
   tag.value = "";
   page.value = 1;
-  fetchSearchResults();
+  if (hasSearched.value) fetchSearchResults();
 }
 
 function handleReset() {
@@ -260,7 +185,9 @@ function handleReset() {
   sort.value = "relevance";
   scope.value = "all";
   page.value = 1;
-  fetchSearchResults();
+  notes.value = [];
+  meta.value = null;
+  hasSearched.value = false;
 }
 
 function changePage(nextPage: number) {
@@ -271,75 +198,59 @@ function changePage(nextPage: number) {
   fetchSearchResults();
 }
 
-onMounted(fetchSearchResults);
+async function toggleFavorite(note: Note) {
+  if (actionLoadingId.value) return;
+  actionLoadingId.value = note.id;
+
+  try {
+    if (!isFavorited(note)) {
+      await api.post("/favorites", { noteId: note.id });
+      note.favorites = [{}];
+      note.favoriteCount = (note.favoriteCount ?? 0) + 1;
+    } else {
+      await api.delete(`/favorites/${note.id}`);
+      note.favorites = [];
+      note.favoriteCount = Math.max((note.favoriteCount ?? 1) - 1, 0);
+    }
+  } catch (error) {
+    console.error("收藏操作失敗", error);
+    alert("收藏操作失敗，請稍後再試");
+  } finally {
+    actionLoadingId.value = null;
+  }
+}
 </script>
 
 <template>
   <section class="search-page page-frame">
-    <section class="search-hero">
-      <div class="hero-copy">
-        <p class="page-kicker">Search Intelligence</p>
-
-        <h1>
-          搜尋筆記，<br />
-          看懂排序原因。
-        </h1>
-
-        <p>
-          這裡是 UniNote 的核心展示頁。使用者只需要輸入一個搜尋詞，
-          系統會召回候選筆記、計算 Ranking Score，並回傳可 debug 的
-          scoreBreakdown。
-        </p>
-
-        <div class="hero-tags">
-          <span>Rule-based Ranking</span>
-          <span>Score Breakdown</span>
-          <span>Cache Demo</span>
-        </div>
+    <header class="search-header">
+      <div>
+        <p class="page-kicker">搜尋筆記</p>
+        <h1>找到需要的課堂重點</h1>
+        <p>搜尋公開筆記與自己的私人筆記，快速篩選課程、分類與標籤。</p>
       </div>
 
-      <aside class="hero-status">
-        <span :class="['cache-pill', cacheClass]">
-          {{ cacheLabel }}
-        </span>
+      <router-link to="/create" class="secondary-action">新增筆記</router-link>
+    </header>
 
-        <strong>{{ meta?.total ?? 0 }}</strong>
-        <small>results found</small>
-
-        <div class="status-divider"></div>
-
-        <p>
-          Candidate limit:
-          <b>{{ meta?.candidateLimit ?? 1000 }}</b>
-        </p>
-      </aside>
-    </section>
-
-    <section class="search-console">
+    <section class="search-toolbar">
       <div class="main-search-row">
-        <div class="main-search-field">
-          <label>Search Query</label>
-
+        <label class="main-search-field">
+          <span>搜尋關鍵字</span>
           <input
             v-model="keyword"
-            placeholder="搜尋課程、筆記、考古題，例如：自控 期中考、工程數學 傅立葉"
+            placeholder="輸入課程、主題、公式或考試關鍵字"
             @keyup.enter="handleSearch"
           />
-        </div>
+        </label>
 
-        <button
-          type="button"
-          class="run-search-btn"
-          :disabled="loading"
-          @click="handleSearch"
-        >
-          {{ loading ? "搜尋中..." : "執行搜尋" }}
+        <button type="button" class="run-search-btn" :disabled="loading" @click="handleSearch">
+          {{ loading ? "搜尋中..." : "搜尋" }}
         </button>
       </div>
 
       <div class="quick-row">
-        <span>熱門搜尋</span>
-
+        <span>範例</span>
         <button
           v-for="item in quickKeywords"
           :key="item"
@@ -351,120 +262,68 @@ onMounted(fetchSearchResults);
         </button>
       </div>
 
-      <div class="console-divider"></div>
-
-      <div class="sort-row">
-        <div>
-          <span class="section-label">搜尋範圍</span>
-
-          <p>
-            預設搜尋自己的私人筆記與所有公開筆記。
-          </p>
+      <div class="toolbar-grid">
+        <div class="control-group">
+          <span>搜尋範圍</span>
+          <div class="segmented-control">
+            <button
+              v-for="option in scopeOptions"
+              :key="option.value"
+              type="button"
+              :class="{ active: scope === option.value }"
+              @click="changeScope(option.value)"
+            >
+              {{ option.label }}
+            </button>
+          </div>
         </div>
 
-        <div class="sort-tabs">
-          <button
-            v-for="option in scopeOptions"
-            :key="option.value"
-            type="button"
-            :class="{ active: scope === option.value }"
-            @click="changeScope(option.value)"
-          >
-            <strong>{{ option.label }}</strong>
-            <small>{{ option.description }}</small>
+        <div class="control-group">
+          <span>排序</span>
+          <div class="segmented-control">
+            <button
+              v-for="option in sortOptions"
+              :key="option.value"
+              type="button"
+              :class="{ active: sort === option.value }"
+              @click="changeSort(option.value)"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+        </div>
+
+        <div class="filter-toggle-row">
+          <button type="button" class="advanced-toggle" @click="showAdvancedFilters = !showAdvancedFilters">
+            {{ showAdvancedFilters ? "收合篩選" : "更多篩選" }}
+            <b v-if="activeFilterCount > 0">{{ activeFilterCount }}</b>
+          </button>
+
+          <button v-if="hasQueryCondition || hasSearched" type="button" class="reset-link" @click="handleReset">
+            清除
           </button>
         </div>
-      </div>
-
-      <div class="console-divider"></div>
-
-      <div class="sort-row">
-        <div>
-          <span class="section-label">排序模式</span>
-
-          <p>
-            相關度使用 Ranking Score，最新與熱門則作為對照排序。
-          </p>
-        </div>
-
-        <div class="sort-tabs">
-          <button
-            v-for="option in sortOptions"
-            :key="option.value"
-            type="button"
-            :class="{ active: sort === option.value }"
-            @click="changeSort(option.value)"
-          >
-            <strong>{{ option.label }}</strong>
-            <small>{{ option.description }}</small>
-          </button>
-        </div>
-      </div>
-
-      <div class="advanced-toggle-row">
-        <button
-          type="button"
-          class="advanced-toggle"
-          @click="showAdvancedFilters = !showAdvancedFilters"
-        >
-          <span>
-            {{ showAdvancedFilters ? "收合進階篩選" : "展開進階篩選" }}
-          </span>
-
-          <b v-if="activeFilterCount > 0">
-            {{ activeFilterCount }}
-          </b>
-        </button>
-
-        <button
-          v-if="hasQueryCondition"
-          type="button"
-          class="reset-link"
-          @click="handleReset"
-        >
-          清除全部條件
-        </button>
       </div>
 
       <div v-if="showAdvancedFilters" class="advanced-panel">
-        <div class="filter-field">
-          <label>Course</label>
+        <label class="filter-field">
+          <span>課程</span>
+          <input v-model="course" placeholder="例如：工程數學" @keyup.enter="handleSearch" />
+        </label>
 
-          <input
-            v-model="course"
-            placeholder="例如：工程數學、自動控制、熱力學"
-            @keyup.enter="handleSearch"
-          />
-        </div>
+        <label class="filter-field">
+          <span>分類</span>
+          <input v-model="category" placeholder="例如：考試整理" @keyup.enter="handleSearch" />
+        </label>
 
-        <div class="filter-field">
-          <label>Category</label>
-
-          <input
-            v-model="category"
-            placeholder="例如：考試整理、課堂筆記、實驗報告"
-            @keyup.enter="handleSearch"
-          />
-        </div>
-
-        <div class="filter-field">
-          <label>Tag</label>
-
-          <input
-            v-model="tag"
-            placeholder="例如：期中考、考古題、公式整理"
-            @keyup.enter="handleSearch"
-          />
-        </div>
+        <label class="filter-field">
+          <span>標籤</span>
+          <input v-model="tag" placeholder="例如：期中考" @keyup.enter="handleSearch" />
+        </label>
 
         <div class="filter-actions">
-          <button type="button" class="secondary-action" @click="handleSearch">
-            套用篩選
-          </button>
-
-          <button type="button" class="ghost-action" @click="clearAdvancedFilters">
-            清除篩選
-          </button>
+          <button type="button" class="secondary-action" @click="handleSearch">套用篩選</button>
+          <button type="button" class="ghost-action" @click="clearAdvancedFilters">清除篩選</button>
         </div>
       </div>
     </section>
@@ -472,57 +331,43 @@ onMounted(fetchSearchResults);
     <section class="result-toolbar">
       <div>
         <strong>{{ totalResultText }}</strong>
-
-        <span>
-          範圍：{{ meta?.scope ?? scope }} ｜ 排序：{{ meta?.sort ?? sort }} ｜ Cache：{{ meta?.cache ?? "-" }}
-        </span>
+        <span v-if="hasSearched">範圍：{{ currentScopeLabel }} ｜ 排序：{{ currentSortLabel }}</span>
+        <span v-else>輸入關鍵字或點選範例開始搜尋。</span>
       </div>
-
-      <router-link to="/create" class="secondary-action">
-        新增可搜尋筆記
-      </router-link>
     </section>
 
-    <section v-if="loading" class="state-panel">
+    <section v-if="!hasSearched && !loading" class="state-panel start-state">
+      <h3>開始搜尋你的學習資料</h3>
+      <p>可以搜尋課程、主題、公式或考試關鍵字，例如：微積分、資料庫、傅立葉、期中考。</p>
+    </section>
+
+    <section v-else-if="loading" class="state-panel">
       <div class="spinner"></div>
-
       <h3>搜尋中</h3>
-
-      <p>
-        系統正在召回候選資料、計算 Ranking Score，並準備回傳
-        scoreBreakdown。
-      </p>
+      <p>正在比對標題、課程、標籤與筆記內容。</p>
     </section>
 
     <section v-else-if="errorMessage" class="state-panel error">
       <h3>搜尋失敗</h3>
-
       <p>{{ errorMessage }}</p>
     </section>
 
     <section v-else-if="notes.length > 0" class="result-list">
-      <article v-for="(note, index) in notes" :key="note.id" class="result-card">
-        <div class="rank-panel">
-          <span>Rank</span>
-
-          <strong>#{{ (meta?.page ?? 1) * pageSize - pageSize + index + 1 }}</strong>
-
-          <div class="rank-score">
-            <b>{{ formatScore(note.score) }}</b>
-            <small>{{ getScoreLevel(note.score) }}</small>
-          </div>
-        </div>
-
-        <div class="result-content">
+      <article v-for="note in notes" :key="note.id" class="result-card">
+        <div class="result-main">
           <div class="result-topline">
             <div class="meta-chips">
               <span>{{ note.course || "未指定課程" }}</span>
               <span>{{ note.category || "未分類" }}</span>
+              <span :class="['visibility-badge', note.visibility === 'PRIVATE' ? 'private' : 'public']">
+                {{ note.visibility === "PRIVATE" ? "私人" : "公開" }}
+              </span>
             </div>
 
-            <p class="reason-text">
-              {{ getMainReason(note) }}
-            </p>
+            <div class="relevance-pill">
+              <i :style="{ width: scoreWidth(note.score) }"></i>
+              <span>{{ getScoreLevel(note.score) }}</span>
+            </div>
           </div>
 
           <router-link :to="`/notes/${note.id}`" class="result-title">
@@ -530,126 +375,57 @@ onMounted(fetchSearchResults);
           </router-link>
 
           <p class="description">
-            {{ note.description || "這篇筆記尚未提供描述。" }}
+            {{ note.description || note.content || "這篇筆記尚未提供描述。" }}
           </p>
 
-          <p class="content-preview">
-            {{ note.content || "尚未建立可搜尋內容。" }}
+          <p v-if="note.description && note.content" class="content-preview">
+            {{ note.content }}
           </p>
-
-          <div class="score-bar">
-            <i :style="{ width: scoreWidth(note.score) }"></i>
-          </div>
 
           <div v-if="note.tags && note.tags.length > 0" class="tag-list">
-            <span v-for="item in note.tags" :key="item.id">
-              #{{ item.name }}
-            </span>
+            <span v-for="item in visibleTags(note)" :key="item.id">#{{ item.name }}</span>
+            <span v-if="hiddenTagCount(note) > 0" class="more-tags">+{{ hiddenTagCount(note) }}</span>
           </div>
 
           <details v-if="note.scoreDetail" class="score-detail">
-            <summary>
-              <span>展開 Ranking 明細</span>
-              <b>Total {{ formatScore(note.scoreDetail.total) }}</b>
-            </summary>
-
-            <div class="breakdown-section">
-              <h4>核心分數</h4>
-
-              <div class="breakdown-grid main">
-                <div>
-                  <span>Relevance</span>
-                  <strong>{{ formatPercent(note.scoreDetail.relevance) }}</strong>
-                </div>
-
-                <div>
-                  <span>Quality</span>
-                  <strong>{{ formatPercent(note.scoreDetail.quality) }}</strong>
-                </div>
-
-                <div>
-                  <span>Popularity</span>
-                  <strong>{{ formatPercent(note.scoreDetail.popularity) }}</strong>
-                </div>
-
-                <div>
-                  <span>Freshness</span>
-                  <strong>{{ formatPercent(note.scoreDetail.recency) }}</strong>
-                </div>
-              </div>
-            </div>
-
-            <div class="breakdown-section">
-              <h4>相關性訊號</h4>
-
-              <div class="breakdown-grid">
-                <div>
-                  <span>Title</span>
-                  <strong>{{ formatPercent(note.scoreDetail.titleMatch) }}</strong>
-                </div>
-
-                <div>
-                  <span>Course</span>
-                  <strong>{{ formatPercent(note.scoreDetail.courseMatch) }}</strong>
-                </div>
-
-                <div>
-                  <span>Tag</span>
-                  <strong>{{ formatPercent(note.scoreDetail.tagMatch) }}</strong>
-                </div>
-
-                <div>
-                  <span>Category</span>
-                  <strong>{{ formatPercent(note.scoreDetail.categoryMatch) }}</strong>
-                </div>
-
-                <div>
-                  <span>Description</span>
-                  <strong>{{ formatPercent(note.scoreDetail.descriptionMatch) }}</strong>
-                </div>
-
-                <div>
-                  <span>Content</span>
-                  <strong>{{ formatPercent(note.scoreDetail.contentMatch) }}</strong>
-                </div>
-
-                <div>
-                  <span>文字相似度 textSimilarity</span>
-                  <strong>{{ formatPercent(note.scoreDetail.textSimilarity ?? 0) }}</strong>
-                </div>
-              </div>
-            </div>
+            <summary>為什麼排在這裡</summary>
+            <ul>
+              <li v-for="reason in getReasonItems(note)" :key="reason">{{ reason }}</li>
+            </ul>
           </details>
         </div>
+
+        <aside class="result-actions">
+          <button
+            type="button"
+            :class="['favorite-action', { active: isFavorited(note) }]"
+            :disabled="actionLoadingId === note.id"
+            @click="toggleFavorite(note)"
+          >
+            {{ isFavorited(note) ? "已收藏" : "收藏" }}
+          </button>
+
+          <router-link :to="`/notes/${note.id}`" class="open-action">閱讀</router-link>
+        </aside>
       </article>
     </section>
 
-    <section v-else class="state-panel">
-      <h3>查無結果</h3>
-
-      <p>
-        可以更換關鍵字、清除進階篩選，或先新增測試筆記。
-      </p>
+    <section v-else class="state-panel empty-state">
+      <h3>找不到符合的筆記</h3>
+      <p>可以換一個關鍵字、放寬篩選條件、查看公開筆記，或新增自己的筆記。</p>
+      <div class="empty-actions">
+        <button type="button" class="secondary-action" @click="handleReset">放寬條件</button>
+        <button type="button" class="secondary-action" @click="changeScope('public')">查看公開筆記</button>
+        <router-link to="/create" class="primary-action">新增筆記</router-link>
+      </div>
     </section>
 
     <section v-if="meta && meta.totalPages > 1" class="pagination-panel">
-      <button
-        type="button"
-        class="ghost-action"
-        :disabled="meta.page <= 1"
-        @click="changePage(meta.page - 1)"
-      >
+      <button type="button" class="ghost-action" :disabled="meta.page <= 1" @click="changePage(meta.page - 1)">
         上一頁
       </button>
-
       <span>{{ meta.page }} / {{ meta.totalPages }}</span>
-
-      <button
-        type="button"
-        class="ghost-action"
-        :disabled="meta.page >= meta.totalPages"
-        @click="changePage(meta.page + 1)"
-      >
+      <button type="button" class="ghost-action" :disabled="meta.page >= meta.totalPages" @click="changePage(meta.page + 1)">
         下一頁
       </button>
     </section>
@@ -658,133 +434,61 @@ onMounted(fetchSearchResults);
 
 <style scoped>
 .search-page {
-  padding: 28px 0 64px;
+  padding: 18px 0 64px;
 }
 
-.search-hero {
-  display: grid;
-  grid-template-columns: 1fr 260px;
-  gap: 24px;
-  padding: 34px;
+.search-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 18px;
+  padding: 20px 22px;
   border: 1px solid var(--line);
   border-radius: 14px;
-  color: var(--ink);
   background: #ffffff;
   box-shadow: var(--shadow-soft);
 }
 
-.hero-copy h1 {
+.search-header h1 {
   margin: 0;
-  font-size: clamp(42px, 6vw, 72px);
-  line-height: 1.04;
-  letter-spacing: 0;
-}
-
-.hero-copy p {
-  max-width: 780px;
-  margin: 20px 0 0;
-  color: var(--muted);
-  line-height: 1.85;
-}
-
-.hero-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 28px;
-}
-
-.hero-tags span {
-  padding: 8px 11px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: #344054;
-  background: #f9fafb;
-  font-size: 13px;
-  font-weight: 750;
-}
-
-.hero-status {
-  min-height: 240px;
-  padding: 24px;
-  display: grid;
-  align-content: center;
-  border: 1px solid #bfdbfe;
-  border-radius: 12px;
-  background: #eff6ff;
-}
-
-.cache-pill {
-  width: fit-content;
-  padding: 8px 11px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.cache-pill.hit {
-  color: #166534;
-  background: #dcfce7;
-}
-
-.cache-pill.miss {
-  color: #7c2d12;
-  background: #fed7aa;
-}
-
-.cache-pill.idle {
-  color: #475467;
-  background: #ffffff;
-}
-
-.hero-status strong {
-  margin-top: 12px;
-  font-size: 64px;
-  line-height: 1;
-  letter-spacing: 0;
-}
-
-.hero-status small {
-  color: var(--muted);
-  font-weight: 800;
-}
-
-.status-divider {
-  height: 1px;
-  margin: 18px 0;
-  background: #bfdbfe;
-}
-
-.hero-status p {
-  margin: 0;
-  color: var(--muted);
-}
-
-.hero-status b {
   color: var(--ink);
+  font-size: clamp(30px, 4vw, 46px);
+  line-height: 1.08;
+  letter-spacing: 0;
 }
 
-.search-console {
-  margin-top: 24px;
-  padding: 22px;
+.search-header p:not(.page-kicker) {
+  max-width: 720px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.search-toolbar {
+  margin-top: 14px;
+  padding: 16px;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.92);
   box-shadow: var(--shadow-soft);
 }
 
 .main-search-row {
   display: grid;
-  grid-template-columns: 1fr 170px;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  gap: 12px;
   align-items: end;
 }
 
-.main-search-field label,
-.filter-field label,
-.section-label {
-  display: block;
-  margin-bottom: 8px;
+.main-search-field,
+.filter-field {
+  display: grid;
+  gap: 7px;
+}
+
+.main-search-field span,
+.filter-field span,
+.control-group > span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
@@ -793,45 +497,50 @@ onMounted(fetchSearchResults);
 }
 
 .main-search-field input {
-  min-height: 56px;
+  min-height: 54px;
   border-radius: 8px;
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 750;
 }
 
 .run-search-btn {
-  min-height: 56px;
+  min-height: 54px;
   border: 0;
   border-radius: 8px;
   color: white;
   background: var(--blue);
-  font-weight: 800;
+  font-weight: 850;
   box-shadow: 0 12px 22px rgba(47, 111, 237, 0.18);
 }
 
 .quick-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 9px;
+  gap: 8px;
   align-items: center;
-  margin-top: 16px;
+  margin-top: 12px;
 }
 
 .quick-row > span {
-  margin-right: 4px;
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
 }
 
-.quick-row button {
+.quick-row button,
+.segmented-control button,
+.advanced-toggle,
+.reset-link {
   border: 1px solid var(--line);
-  padding: 8px 11px;
   border-radius: 8px;
   color: #334155;
   background: #ffffff;
+  font-weight: 800;
+}
+
+.quick-row button {
+  padding: 7px 10px;
   font-size: 13px;
-  font-weight: 750;
 }
 
 .quick-row button.active,
@@ -841,83 +550,54 @@ onMounted(fetchSearchResults);
   background: var(--blue);
 }
 
-.console-divider {
-  height: 1px;
-  margin: 22px 0;
-  background: var(--line);
-}
-
-.sort-row {
+.toolbar-grid {
   display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 20px;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) auto;
+  gap: 14px;
+  align-items: end;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
 
-.sort-row p {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.65;
-  font-size: 14px;
-}
-
-.sort-tabs {
+.control-group {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 11px;
+  gap: 8px;
 }
 
-.sort-tabs button {
-  border: 1px solid var(--line);
-  padding: 14px;
-  border-radius: 10px;
-  text-align: left;
-  background: #ffffff;
-  transition: 0.2s ease;
+.segmented-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.sort-tabs button strong {
-  display: block;
-  color: #111827;
-  font-size: 15px;
-  font-weight: 800;
+.segmented-control button {
+  min-height: 38px;
+  padding: 0 12px;
 }
 
-.sort-tabs button small {
-  display: block;
-  margin-top: 5px;
-  color: var(--muted);
-  line-height: 1.4;
-}
-
-.sort-tabs button.active {
+.segmented-control button.active {
+  color: #1d4ed8;
   border-color: #bfdbfe;
   background: #eff6ff;
-  box-shadow: none;
 }
 
-.sort-tabs button.active strong {
-  color: var(--blue);
-}
-
-.advanced-toggle-row {
+.filter-toggle-row {
   display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  align-items: center;
-  margin-top: 18px;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.advanced-toggle,
+.reset-link {
+  min-height: 38px;
+  padding: 0 12px;
 }
 
 .advanced-toggle {
-  border: 1px solid var(--line);
-  padding: 10px 14px;
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  border-radius: 8px;
-  color: #334155;
-  background: #ffffff;
-  font-weight: 800;
+  gap: 8px;
 }
 
 .advanced-toggle b {
@@ -932,32 +612,25 @@ onMounted(fetchSearchResults);
 }
 
 .reset-link {
-  border: 0;
-  padding: 10px 12px;
-  color: var(--muted);
-  background: transparent;
-  font-weight: 800;
-}
-
-.reset-link:hover {
-  color: #dc2626;
+  color: #b42318;
+  background: #fffafa;
 }
 
 .advanced-panel {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 13px;
-  margin-top: 16px;
-  padding: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 14px;
+  padding: 14px;
   border: 1px dashed #cbd5e1;
   border-radius: 12px;
   background: #f9fafb;
 }
 
 .filter-actions {
-  grid-column: 1 / -1;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   justify-content: flex-end;
 }
 
@@ -966,7 +639,7 @@ onMounted(fetchSearchResults);
   justify-content: space-between;
   gap: 18px;
   align-items: center;
-  margin: 24px 0;
+  margin: 18px 0 14px;
 }
 
 .result-toolbar strong,
@@ -976,116 +649,100 @@ onMounted(fetchSearchResults);
 
 .result-toolbar strong {
   color: #111827;
-  font-size: 23px;
+  font-size: 22px;
   letter-spacing: 0;
 }
 
 .result-toolbar span {
-  margin-top: 5px;
+  margin-top: 4px;
   color: #64748b;
 }
 
 .result-list {
   display: grid;
-  gap: 18px;
+  gap: 14px;
 }
 
 .result-card {
   display: grid;
-  grid-template-columns: 148px 1fr;
-  gap: 20px;
-  padding: 22px;
+  grid-template-columns: minmax(0, 1fr) 124px;
+  gap: 18px;
+  padding: 18px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: #ffffff;
   box-shadow: var(--shadow-soft);
-  transition: 0.22s ease;
 }
 
-.result-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-hard);
-}
-
-.rank-panel {
-  min-height: 230px;
-  padding: 18px;
-  display: grid;
-  align-content: space-between;
-  border: 1px solid #bfdbfe;
-  border-radius: 12px;
-  color: var(--ink);
-  background: #eff6ff;
-}
-
-.rank-panel > span {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.rank-panel > strong {
-  font-size: 42px;
-  line-height: 1;
-  letter-spacing: 0;
-}
-
-.rank-score b,
-.rank-score small {
-  display: block;
-}
-
-.rank-score b {
-  font-size: 38px;
-  line-height: 1;
-  letter-spacing: 0;
-}
-
-.rank-score small {
-  margin-top: 6px;
-  font-weight: 800;
-}
-
-.result-content {
+.result-main {
   min-width: 0;
 }
 
 .result-topline {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: 14px;
   align-items: flex-start;
 }
 
-.meta-chips {
+.meta-chips,
+.tag-list {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.meta-chips span {
-  padding: 7px 10px;
+.meta-chips span,
+.tag-list span {
+  padding: 6px 9px;
   border-radius: 8px;
-  color: #3867ff;
-  background: #eff6ff;
+  color: #334155;
+  background: #f1f5f9;
   font-size: 12px;
   font-weight: 750;
 }
 
-.reason-text {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 750;
+.visibility-badge.public {
+  color: #047857;
+  background: #ecfdf3;
+  border: 1px solid #bbf7d0;
+}
+
+.visibility-badge.private {
+  color: #7c2d12;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+}
+
+.relevance-pill {
+  min-width: 118px;
+  padding: 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+}
+
+.relevance-pill i {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--blue);
+}
+
+.relevance-pill span {
+  display: block;
+  margin-top: 6px;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 850;
 }
 
 .result-title {
   display: block;
-  margin: 14px 0 8px;
+  margin: 13px 0 8px;
   color: #0f172a;
-  font-size: 28px;
-  line-height: 1.15;
+  font-size: 24px;
+  line-height: 1.2;
   font-weight: 850;
   letter-spacing: 0;
   text-decoration: none;
@@ -1099,7 +756,7 @@ onMounted(fetchSearchResults);
 .content-preview {
   margin: 0 0 10px;
   color: var(--muted);
-  line-height: 1.75;
+  line-height: 1.7;
 }
 
 .content-preview {
@@ -1110,103 +767,83 @@ onMounted(fetchSearchResults);
   -webkit-box-orient: vertical;
 }
 
-.score-bar {
-  height: 10px;
-  margin-top: 16px;
-  border-radius: 999px;
-  background: #e2e8f0;
-  overflow: hidden;
-}
-
-.score-bar i {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: var(--blue);
-}
-
 .tag-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
+  margin-top: 12px;
 }
 
-.tag-list span {
-  padding: 6px 9px;
-  border-radius: 8px;
-  color: #334155;
-  background: #f1f5f9;
-  font-size: 12px;
-  font-weight: 750;
+.tag-list .more-tags {
+  color: #1d4ed8;
+  background: #eff6ff;
 }
 
 .score-detail {
-  margin-top: 16px;
-}
-
-.score-detail summary {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 13px 14px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  color: #111827;
-  background: #f8fafc;
-  cursor: pointer;
-  font-weight: 800;
-}
-
-.score-detail summary b {
-  color: var(--blue);
-}
-
-.breakdown-section {
   margin-top: 14px;
 }
 
-.breakdown-section h4 {
-  margin: 0 0 10px;
+.score-detail summary {
+  width: fit-content;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   color: #334155;
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  background: #f8fafc;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 850;
 }
 
-.breakdown-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 9px;
-}
-
-.breakdown-grid.main {
-  grid-template-columns: repeat(4, 1fr);
-}
-
-.breakdown-grid div {
-  padding: 13px;
+.score-detail ul {
+  margin: 10px 0 0;
+  padding: 12px 14px 12px 30px;
   border: 1px solid var(--line);
   border-radius: 10px;
+  color: #475569;
+  background: #ffffff;
+  line-height: 1.7;
+}
+
+.result-actions {
+  display: grid;
+  gap: 9px;
+  align-content: start;
+}
+
+.favorite-action,
+.open-action {
+  min-height: 40px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.favorite-action {
+  border: 1px solid var(--line);
+  color: #475467;
   background: #ffffff;
 }
 
-.breakdown-grid span {
-  display: block;
-  color: #94a3b8;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.favorite-action.active {
+  color: #92400e;
+  background: #fffbeb;
+  border-color: #fde68a;
 }
 
-.breakdown-grid strong {
-  display: block;
-  margin-top: 6px;
-  color: #111827;
-  font-size: 23px;
-  letter-spacing: 0;
+.open-action {
+  color: white;
+  background: var(--ink);
+}
+
+.empty-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
 }
 
 .pagination-panel {
@@ -1214,7 +851,7 @@ onMounted(fetchSearchResults);
   justify-content: center;
   align-items: center;
   gap: 14px;
-  margin-top: 26px;
+  margin-top: 24px;
 }
 
 .pagination-panel span {
@@ -1222,26 +859,24 @@ onMounted(fetchSearchResults);
 }
 
 @media (max-width: 980px) {
-  .search-hero,
+  .search-header,
+  .toolbar-grid,
+  .advanced-panel,
   .result-card {
     grid-template-columns: 1fr;
   }
 
-  .sort-row {
-    grid-template-columns: 1fr;
+  .search-header {
+    display: grid;
   }
 
-  .advanced-panel {
-    grid-template-columns: 1fr;
+  .filter-toggle-row,
+  .filter-actions {
+    justify-content: flex-start;
   }
 
-  .breakdown-grid,
-  .breakdown-grid.main {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .rank-panel {
-    min-height: 160px;
+  .result-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1250,40 +885,40 @@ onMounted(fetchSearchResults);
     padding-top: 14px;
   }
 
-  .search-hero {
-    padding: 26px;
-    border-radius: 14px;
+  .search-header,
+  .search-toolbar,
+  .result-card {
+    padding: 16px;
   }
 
-  .main-search-row {
+  .main-search-row,
+  .result-actions {
     grid-template-columns: 1fr;
   }
 
-  .sort-tabs {
-    grid-template-columns: 1fr;
-  }
-
-  .result-toolbar {
-    align-items: stretch;
+  .segmented-control,
+  .filter-toggle-row,
+  .filter-actions,
+  .empty-actions {
     flex-direction: column;
   }
 
+  .segmented-control button,
+  .advanced-toggle,
+  .reset-link,
+  .favorite-action,
+  .open-action {
+    width: 100%;
+  }
+
+  .result-toolbar,
   .result-topline {
-    flex-direction: column;
-  }
-
-  .advanced-toggle-row {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .filter-actions {
-    flex-direction: column;
-  }
-
-  .breakdown-grid,
-  .breakdown-grid.main {
-    grid-template-columns: 1fr;
+  .relevance-pill {
+    width: 100%;
   }
 }
 </style>
