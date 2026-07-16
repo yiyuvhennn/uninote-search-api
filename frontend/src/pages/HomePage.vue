@@ -8,17 +8,17 @@ const hasToken = computed(() => Boolean(localStorage.getItem("token")));
   <section class="home page-frame">
     <div class="home-hero">
       <div class="hero-copy">
-        <div class="hero-badge">UniNote Search API</div>
+        <div class="hero-badge">共享學習筆記</div>
         <h1>
           讓課堂筆記<br />被準確找到。
         </h1>
         <p>
-          UniNote 將筆記內容、課程、標籤與 PDF 文字整理成可搜尋資料，並用可解釋的分數呈現排序原因。
+          UniNote 幫你搜尋公開筆記與自己的私人筆記，支援 PDF 匯入、收藏與分類管理。
         </p>
 
         <div class="hero-actions">
           <router-link :to="hasToken ? '/search' : '/login'" class="primary-action">
-            {{ hasToken ? "進入搜尋艙" : "開始體驗" }}
+            {{ hasToken ? "開始搜尋" : "開始使用" }}
           </router-link>
           <router-link :to="hasToken ? '/notes' : '/register'" class="secondary-action">
             {{ hasToken ? "查看筆記庫" : "建立帳號" }}
@@ -37,7 +37,7 @@ const hasToken = computed(() => Boolean(localStorage.getItem("token")));
           <b>82.4</b>
           <div>
             <strong>工程數學 Fourier Series 筆記</strong>
-            <small>title + content + textSimilarity</small>
+            <small>標題與內容相符</small>
           </div>
         </div>
         <div class="preview-result">
@@ -48,24 +48,24 @@ const hasToken = computed(() => Boolean(localStorage.getItem("token")));
           </div>
         </div>
         <div class="preview-grid">
-          <span>Cache Hit</span>
-          <span>Tag Filter</span>
-          <span>Score Detail</span>
+          <span>公開筆記</span>
+          <span>標籤篩選</span>
+          <span>排序說明</span>
         </div>
       </div>
     </div>
 
     <div class="bento-grid">
       <article class="bento-card wide dark">
-        <span>01 / Search</span>
+        <span>01 / 搜尋</span>
         <h2>搜尋結果不只列出來，也說明為什麼排在前面。</h2>
-        <p>關鍵字、課程、分類、標籤、排序與分頁都在同一個流程中運作，方便展示 Search API 的完整行為。</p>
+        <p>用關鍵字、課程、分類與標籤快速縮小範圍，找到更適合參考的課堂筆記。</p>
       </article>
 
       <article class="bento-card color-one">
-        <span>02 / Ranking</span>
-        <h3>分數不是黑盒</h3>
-        <p>每筆結果會呈現 title、content、textSimilarity、popularity、recency 等訊號。</p>
+        <span>02 / 相關度</span>
+        <h3>知道為什麼相關</h3>
+        <p>每筆結果都可以查看排序說明，幫助你判斷是否值得打開閱讀。</p>
       </article>
 
       <article class="bento-card color-two">
@@ -76,12 +76,12 @@ const hasToken = computed(() => Boolean(localStorage.getItem("token")));
 
       <article class="bento-card mini metric">
         <strong>9</strong>
-        <span>Signals</span>
+        <span>排序依據</span>
       </article>
 
       <article class="bento-card mini metric lime">
         <strong>60s</strong>
-        <span>Cache TTL</span>
+        <span>快速搜尋</span>
       </article>
     </div>
   </section>

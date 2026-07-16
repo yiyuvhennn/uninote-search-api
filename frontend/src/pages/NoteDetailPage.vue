@@ -38,7 +38,7 @@ onMounted(fetchNoteDetail);
     <article v-else-if="note" class="detail-document">
       <header class="document-hero">
         <div>
-          <p class="page-kicker">Document detail</p>
+          <p class="page-kicker">筆記詳情</p>
           <h1>{{ note.title }}</h1>
           <p>{{ note.description || "這篇筆記尚未提供描述。" }}</p>
         </div>
@@ -46,18 +46,18 @@ onMounted(fetchNoteDetail);
       </header>
 
       <div class="info-rack">
-        <div><span>Course</span><strong>{{ note.course || '未分類' }}</strong></div>
-        <div><span>Author</span><strong>{{ note.author?.name || '未知作者' }}</strong></div>
-        <div><span>Updated</span><strong>{{ formatDate(note.updatedAt || note.createdAt) }}</strong></div>
-        <div><span>Stats</span><strong>{{ note.views }} views / {{ note.likes }} likes</strong></div>
+        <div><span>課程</span><strong>{{ note.course || '未分類' }}</strong></div>
+        <div><span>作者</span><strong>{{ note.author?.name || '未知作者' }}</strong></div>
+        <div><span>更新時間</span><strong>{{ formatDate(note.updatedAt || note.createdAt) }}</strong></div>
+        <div><span>統計</span><strong>{{ note.views }} 次瀏覽 / {{ note.likes }} 個讚</strong></div>
       </div>
 
       <section class="content-section" v-if="note.content"><h2>可搜尋內容</h2><p>{{ note.content }}</p></section>
-      <section v-if="tagList.length" class="tags-section"><h2>Tags</h2><div><span v-for="tag in tagList" :key="tag.id">#{{ tag.name }}</span></div></section>
+      <section v-if="tagList.length" class="tags-section"><h2>標籤</h2><div><span v-for="tag in tagList" :key="tag.id">#{{ tag.name }}</span></div></section>
 
       <footer class="action-strip">
         <a v-if="note.fileUrl" :href="note.fileUrl" target="_blank" class="primary-action">查看檔案</a>
-        <router-link to="/search" class="secondary-action">用搜尋艙驗證</router-link>
+        <router-link to="/search" class="secondary-action">回到搜尋</router-link>
       </footer>
     </article>
   </section>

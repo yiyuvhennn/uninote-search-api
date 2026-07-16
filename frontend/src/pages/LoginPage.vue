@@ -54,26 +54,26 @@ onMounted(() => {
       <router-link to="/" class="floating-logo"><b>uN</b><span>uniNote</span></router-link>
       <div class="scan-card">
         <div class="scan-top"><span></span><span></span><span></span></div>
-        <p class="scan-label">live ranking preview</p>
+        <p class="scan-label">筆記搜尋預覽</p>
         <h1>登入你的<br />知識雷達。</h1>
         <div class="ranking-stack">
-          <div class="rank-item first"><strong>9.8</strong><span>傅立葉級數整理</span><em>title + content</em></div>
-          <div class="rank-item"><strong>8.1</strong><span>偏微分方程筆記</span><em>recency boost</em></div>
-          <div class="rank-item"><strong>6.7</strong><span>工程數學考前題</span><em>popular sort</em></div>
+          <div class="rank-item first"><strong>9.8</strong><span>傅立葉級數整理</span><em>標題與內容相符</em></div>
+          <div class="rank-item"><strong>8.1</strong><span>偏微分方程筆記</span><em>最近更新</em></div>
+          <div class="rank-item"><strong>6.7</strong><span>工程數學考前題</span><em>熱門筆記</em></div>
         </div>
       </div>
-      <div class="floating-note note-a">Cache hit</div>
-      <div class="floating-note note-b">Score detail</div>
+      <div class="floating-note note-a">快速找到</div>
+      <div class="floating-note note-b">排序說明</div>
     </section>
 
     <section class="form-zone">
       <div class="auth-card">
-        <p class="page-kicker">Welcome back</p>
+        <p class="page-kicker">歡迎回來</p>
         <h2>登入 uniNote</h2>
-        <p class="subtitle">進入 Search API MVP，測試搜尋、Ranking、Filter 與 Cache。</p>
+        <p class="subtitle">搜尋共享筆記、管理自己的學習資料，快速找到需要的課堂重點。</p>
 
         <button type="button" class="demo-ticket" @click="fillDemoAccount">
-          <span><b>Demo account</b><small>test@uninotes.com / 123456</small></span>
+          <span><b>示範帳號</b><small>test@uninotes.com / 123456</small></span>
           <em>填入</em>
         </button>
 
@@ -94,7 +94,7 @@ onMounted(() => {
           </label>
 
           <p v-if="errorMessage" class="message-error">{{ errorMessage }}</p>
-          <button class="submit" :disabled="!canSubmit"><span>{{ loading ? "登入中..." : "登入系統" }}</span></button>
+          <button class="submit" :disabled="!canSubmit"><span>{{ loading ? "登入中..." : "登入" }}</span></button>
         </form>
 
         <p class="switch-text">還沒有帳號？<router-link to="/register">建立新帳號</router-link></p>

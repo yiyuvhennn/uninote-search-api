@@ -24,7 +24,7 @@ function closeMenu() {
       <span class="brand-icon">uN</span>
       <span class="brand-text">
         <strong>UniNote</strong>
-        <small>Search API</small>
+        <small>學習筆記</small>
       </span>
     </router-link>
 
@@ -42,7 +42,7 @@ function closeMenu() {
     </nav>
 
     <div class="nav-actions">
-      <span v-if="isLoggedIn" class="route-chip">Workspace</span>
+      <span v-if="isLoggedIn" class="route-chip">我的空間</span>
       <button v-if="isLoggedIn" type="button" class="logout" @click="handleLogout">登出</button>
       <router-link v-else to="/login" class="login-link">登入</router-link>
     </div>

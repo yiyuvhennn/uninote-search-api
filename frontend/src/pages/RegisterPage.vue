@@ -61,21 +61,21 @@ onMounted(() => {
     <section class="story-panel">
       <router-link to="/" class="brand">uN <span>uniNote</span></router-link>
       <div class="story-copy">
-        <p>create workspace</p>
+        <p>建立帳號</p>
         <h1>先建立帳號，<br />再建立你的筆記宇宙。</h1>
       </div>
       <div class="journey-card">
         <div class="step active"><b>01</b><span>建立帳號</span></div>
         <div class="step"><b>02</b><span>新增筆記</span></div>
-        <div class="step"><b>03</b><span>測試 Ranking</span></div>
+        <div class="step"><b>03</b><span>搜尋與收藏</span></div>
       </div>
     </section>
 
     <section class="register-form-zone">
       <div class="register-card">
-        <p class="page-kicker">Get started</p>
+        <p class="page-kicker">開始使用</p>
         <h2>註冊 uniNote</h2>
-        <p class="subtitle">用一組測試帳號進入 Search API MVP，完整體驗搜尋、篩選與排序流程。</p>
+        <p class="subtitle">建立帳號後，你可以搜尋公開筆記、上傳 PDF，並保存自己的學習資料。</p>
 
         <form class="register-form" @submit.prevent="handleRegister">
           <label><span>名稱</span><input v-model="name" type="text" placeholder="例如：王小明" /><small v-if="nameError">{{ nameError }}</small></label>
@@ -94,7 +94,7 @@ onMounted(() => {
             <small v-if="confirmPasswordError">{{ confirmPasswordError }}</small>
           </label>
 
-          <label class="check"><input v-model="agree" type="checkbox" /><span>我了解這是 Search API MVP 測試環境，註冊後會進入展示流程。</span></label>
+          <label class="check"><input v-model="agree" type="checkbox" /><span>我了解建立帳號後可以使用公開筆記搜尋、私人筆記與收藏功能。</span></label>
           <p v-if="errorMessage" class="message error">{{ errorMessage }}</p>
           <p v-if="successMessage" class="message success">{{ successMessage }}</p>
           <button class="submit" :disabled="!canSubmit">{{ loading ? "註冊中..." : "建立帳號" }}</button>

@@ -180,7 +180,7 @@ onMounted(fetchMe);
   <section class="settings-page page-frame">
     <header class="settings-hero">
       <div>
-        <p class="page-kicker">Account settings</p>
+        <p class="page-kicker">帳號管理</p>
         <h1>帳號設定</h1>
         <p>管理你的個人資料、登入密碼與帳號狀態。</p>
       </div>
@@ -201,7 +201,7 @@ onMounted(fetchMe);
     <div v-else class="settings-layout">
       <section class="settings-card">
         <div class="section-heading">
-          <span>Profile</span>
+          <span>個人資料</span>
           <h2>個人資料</h2>
         </div>
 
@@ -228,7 +228,7 @@ onMounted(fetchMe);
 
       <section class="settings-card">
         <div class="section-heading">
-          <span>Password</span>
+          <span>密碼</span>
           <h2>修改密碼</h2>
         </div>
 
@@ -259,12 +259,12 @@ onMounted(fetchMe);
 
       <section class="settings-card danger-zone">
         <div class="section-heading">
-          <span>Danger zone</span>
+          <span>危險操作</span>
           <h2>刪除帳號</h2>
         </div>
 
         <p class="danger-copy">
-          刪除帳號後，你的筆記、PDF 匯入資料與收藏資料會一併刪除，這個動作無法復原。
+          刪除帳號後，你建立的公開筆記、私人筆記、PDF 匯入資料與收藏紀錄都會被移除。此操作無法復原。
         </p>
 
         <form class="settings-form" @submit.prevent="deleteAccount">
@@ -291,11 +291,11 @@ onMounted(fetchMe);
 
 <style scoped>
 .settings-page {
-  padding: 28px 0 60px;
+  padding: 22px 0 60px;
 }
 
 .settings-hero {
-  padding: 32px;
+  padding: 24px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: #ffffff;
@@ -305,15 +305,15 @@ onMounted(fetchMe);
 .settings-hero h1 {
   margin: 0;
   color: var(--ink);
-  font-size: clamp(42px, 6vw, 72px);
-  line-height: 1.04;
+  font-size: clamp(34px, 5vw, 54px);
+  line-height: 1.08;
   letter-spacing: 0;
 }
 
 .settings-hero p:not(.page-kicker) {
   max-width: 640px;
   color: var(--muted);
-  line-height: 1.8;
+  line-height: 1.7;
 }
 
 .settings-layout {
