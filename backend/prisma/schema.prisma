@@ -25,7 +25,7 @@ model Note {
   description String?
   content     String?
   searchText  String?
-  fileUrl     String
+  fileUrl     String?
   course      String
   category    String?
   visibility  String     @default("PUBLIC")

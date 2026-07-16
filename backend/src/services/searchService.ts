@@ -39,7 +39,7 @@ type SearchResult = {
     description: string | null;
     content: string | null;
     searchText: string | null;
-    fileUrl: string;
+    fileUrl: string | null;
     course: string;
     category: string | null;
     visibility: string;

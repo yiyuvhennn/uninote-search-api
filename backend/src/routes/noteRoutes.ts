@@ -94,7 +94,14 @@ const uploadPdfFile = (req: Request, res: Response, next: NextFunction) => {
  * 將前端傳來的 tags 字串轉成陣列。
  * 支援用逗號、中文逗號或空白分隔，例如：「期中考,工程數學」。
  */
-function parseTagsInput(value: unknown) {
+function parseTagsInput(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => parseTagsInput(item))
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+  }
+
   if (typeof value !== "string") {
     return [];
   }
@@ -124,6 +131,15 @@ function buildVisibleNoteWhere(userId: number, scope: NoteScope) {
 
   return {
     OR: [{ authorId: userId }, { visibility: "PUBLIC" }],
+  };
+}
+
+function formatNoteResponse<T extends { tags?: Array<{ tag: { id: number; name: string } }> }>(
+  note: T
+) {
+  return {
+    ...note,
+    tags: note.tags?.map((item) => item.tag) ?? [],
   };
 }
 
@@ -209,7 +225,7 @@ router.get("/", authMiddleware, async (req, res) => {
       },
     });
 
-    res.json(notes);
+    res.json(notes.map(formatNoteResponse));
   } catch (error) {
     console.error("Get notes error:", error);
     res.status(500).json({ message: "Failed to fetch notes" });
@@ -228,11 +244,12 @@ router.post("/", authMiddleware, async (req, res) => {
       views = 0,
       likes = 0,
       visibility,
+      tags: rawTags,
     } = req.body;
 
-    if (!title || !fileUrl || !course) {
+    if (!title || !course) {
       return res.status(400).json({
-        message: "Title, fileUrl and course are required",
+        message: "Title and course are required",
       });
     }
 
@@ -243,6 +260,10 @@ router.post("/", authMiddleware, async (req, res) => {
         message: "Unauthorized",
       });
     }
+
+    const tags = parseTagsInput(rawTags);
+    const normalizedFileUrl =
+      typeof fileUrl === "string" && fileUrl.trim() ? fileUrl.trim() : null;
 
     const newNote = await prisma.note.create({
       data: {
@@ -255,15 +276,25 @@ router.post("/", authMiddleware, async (req, res) => {
           content,
           course,
           category,
-          tags: [],
+          tags,
         }),
-        fileUrl,
+        fileUrl: normalizedFileUrl,
         course,
         category,
         views: Number(views) || 0,
         likes: Number(likes) || 0,
         visibility: normalizeVisibility(visibility),
         authorId: userId,
+        tags: {
+          create: tags.map((tagName) => ({
+            tag: {
+              connectOrCreate: {
+                where: { name: tagName },
+                create: { name: tagName },
+              },
+            },
+          })),
+        },
       },
       include: {
         author: {
@@ -273,6 +304,11 @@ router.post("/", authMiddleware, async (req, res) => {
             email: true,
           },
         },
+        tags: {
+          include: {
+            tag: true,
+          },
+        },
       },
     });
 
@@ -280,7 +316,7 @@ router.post("/", authMiddleware, async (req, res) => {
 
     return res.status(201).json({
       message: "Note created successfully",
-      note: newNote,
+      note: formatNoteResponse(newNote),
     });
   } catch (error) {
     console.error("Create note error:", error);
@@ -460,7 +496,7 @@ router.get("/:id", authMiddleware, async (req, res) => {
 
     clearCache();
 
-    return res.json(note);
+    return res.json(formatNoteResponse(note));
   } catch (error) {
     console.error("Get note by id error:", error);
     return res.status(500).json({

@@ -107,6 +107,14 @@ function titlesFromNotes(res: request.Response) {
   return (res.body as Array<{ title: string }>).map((note) => note.title);
 }
 
+function findNoteFromNotes(res: request.Response, title: string) {
+  return (res.body as Array<{
+    title: string;
+    fileUrl: string | null;
+    tags: Array<{ id: number; name: string }>;
+  }>).find((note) => note.title === title);
+}
+
 function titlesFromFavorites(res: request.Response) {
   return (res.body as Array<{ note: { title: string } }>).map(
     (favorite) => favorite.note.title
@@ -469,6 +477,65 @@ describe("PUBLIC / PRIVATE note visibility integration", () => {
 
     const searchRes = await searchAs(tokenA, "pdf-hardening-success-keyword", "all");
     expect(titlesFromSearch(searchRes)).toContain("pdf-hardening-success-note");
+  });
+
+  it("manual note creation supports tags and optional fileUrl", async () => {
+    const title = "manual-tags-optional-file-note";
+    const uniqueKeyword = "manual-tags-optional-file-keyword";
+    const tagName = "manualtagphase25";
+
+    const createRes = await request(app)
+      .post("/notes")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({
+        title,
+        description: "Manual note with tags and no reference link",
+        content: `Searchable manual note content ${uniqueKeyword}`,
+        course: "Integration Test",
+        category: "Manual Create",
+        tags: `微積分,期中考,${tagName}`,
+        visibility: "PUBLIC",
+      });
+
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.note.fileUrl).toBeNull();
+    expect(createRes.body.note.fileUrl).not.toBe("manual-note");
+    expect(createRes.body.note.tags.map((tag: { name: string }) => tag.name)).toEqual(
+      expect.arrayContaining(["微積分", "期中考", tagName])
+    );
+
+    const notesRes = await request(app)
+      .get("/notes")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .query({ scope: "mine" });
+
+    expect(notesRes.status).toBe(200);
+    const noteFromList = findNoteFromNotes(notesRes, title);
+    expect(noteFromList).toBeTruthy();
+    expect(noteFromList?.fileUrl).toBeNull();
+    expect(noteFromList?.tags.map((tag) => tag.name)).toEqual(
+      expect.arrayContaining(["微積分", "期中考", tagName])
+    );
+
+    const searchRes = await searchAs(tokenA, uniqueKeyword, "all");
+
+    expect(searchRes.status).toBe(200);
+    expect(titlesFromSearch(searchRes)).toContain(title);
+    const noteFromSearch = (searchRes.body.data as Array<{
+      title: string;
+      fileUrl: string | null;
+      tags: Array<{ name: string }>;
+    }>).find((note) => note.title === title);
+    expect(noteFromSearch?.fileUrl).toBeNull();
+    expect(noteFromSearch?.tags.map((tag) => tag.name)).toContain(tagName);
+
+    const tagSearchRes = await request(app)
+      .get("/search")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .query({ tag: tagName, scope: "all", sort: "relevance", page: 1, pageSize: 20 });
+
+    expect(tagSearchRes.status).toBe(200);
+    expect(titlesFromSearch(tagSearchRes)).toContain(title);
   });
 
   it(".txt upload is rejected and does not create a searchable note", async () => {
