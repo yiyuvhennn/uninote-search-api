@@ -5,6 +5,8 @@ import {
   getCurrentUser,
   loginUser,
   registerUser,
+  requestPasswordReset,
+  resetPasswordWithToken,
   updateCurrentUser,
 } from "../services/authService";
 
@@ -39,6 +41,23 @@ export const login = async (req: Request, res: Response) => {
     return res.status(400).json({
       message: error.message || "Login failed",
     });
+  }
+};
+
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    return res.json(await requestPasswordReset(req.body.email));
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    return res.status(500).json({ message: "目前無法建立重設連結，請稍後再試" });
+  }
+};
+
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    return res.json(await resetPasswordWithToken(req.body.token, req.body.newPassword, req.body.confirmPassword));
+  } catch (error: any) {
+    return res.status(400).json({ message: error.message || "密碼重設失敗" });
   }
 };
 

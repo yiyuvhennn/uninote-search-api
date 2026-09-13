@@ -194,6 +194,16 @@ afterAll(async () => {
 });
 
 describe("PUBLIC / PRIVATE note visibility integration", () => {
+  it("health endpoints report that the API and database are ready", async () => {
+    const liveRes = await request(app).get("/health/live");
+    const readyRes = await request(app).get("/health/ready");
+
+    expect(liveRes.status).toBe(200);
+    expect(liveRes.body.status).toBe("ok");
+    expect(readyRes.status).toBe(200);
+    expect(readyRes.body).toEqual({ status: "ready", database: "up" });
+  });
+
   it("GET /notes requires authentication", async () => {
     const res = await request(app).get("/notes");
 
@@ -245,6 +255,17 @@ describe("PUBLIC / PRIVATE note visibility integration", () => {
 
     expect(res.status).toBe(200);
     expect(titlesFromSearch(res)).toContain("scope-rule-b-public");
+  });
+
+  it("expands 自控 and recalls 自動控制 notes", async () => {
+    await createNote(tokenA, "自動控制系統重點", "PUBLIC");
+    const res = await searchAs(tokenB, "自控");
+
+    expect(res.status).toBe(200);
+    expect(titlesFromSearch(res)).toContain("自動控制系統重點");
+    expect(res.body.meta.expandedTerms).toEqual(
+      expect.arrayContaining(["自控", "自動控制", "控制系統"])
+    );
   });
 
   it("A cannot search B's PRIVATE note", async () => {
@@ -472,11 +493,35 @@ describe("PUBLIC / PRIVATE note visibility integration", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.note.fileUrl).toMatch(
-      /^uploaded-pdf:\d+-Unsafe-PDF-Name-2026\.pdf$/
+      /^uploaded-pdf:[a-f0-9-]+\.pdf:Unsafe-PDF-Name-2026\.pdf$/
     );
+
+    const fileRes = await request(app)
+      .get(`/notes/${res.body.note.id}/file`)
+      .set("Authorization", `Bearer ${tokenB}`);
+    expect(fileRes.status).toBe(200);
+    expect(fileRes.headers["content-type"]).toContain("application/pdf");
 
     const searchRes = await searchAs(tokenA, "pdf-hardening-success-keyword", "all");
     expect(titlesFromSearch(searchRes)).toContain("pdf-hardening-success-note");
+  });
+
+  it("does not expose a PRIVATE PDF original file to another user", async () => {
+    const note = await uploadPdfNote(
+      tokenA,
+      "private-original-file-note",
+      "private-original-file-content",
+      "PRIVATE"
+    );
+    const ownerRes = await request(app)
+      .get(`/notes/${note.id}/file`)
+      .set("Authorization", `Bearer ${tokenA}`);
+    const otherRes = await request(app)
+      .get(`/notes/${note.id}/file`)
+      .set("Authorization", `Bearer ${tokenB}`);
+
+    expect(ownerRes.status).toBe(200);
+    expect(otherRes.status).toBe(404);
   });
 
   it("manual note creation supports tags and optional fileUrl", async () => {

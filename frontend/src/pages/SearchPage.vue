@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import api from "../services/api";
 import type { Note, SearchMeta, SearchResponse } from "../types/note";
+import ToastMessage from "../components/ToastMessage.vue";
 
 type SortMode = "relevance" | "latest" | "popular";
 type SearchScope = "all" | "mine" | "public";
 
+const route = useRoute();
+const router = useRouter();
 const notes = ref<Note[]>([]);
 const meta = ref<SearchMeta | null>(null);
 
@@ -21,6 +25,9 @@ const pageSize = 10;
 
 const loading = ref(false);
 const errorMessage = ref("");
+const toastMessage = ref("");
+const toastType = ref<"success" | "error" | "info">("info");
+const syncingUrl = ref(false);
 const showAdvancedFilters = ref(false);
 const hasSearched = ref(false);
 const actionLoadingId = ref<number | null>(null);
@@ -39,7 +46,24 @@ const scopeOptions: Array<{ label: string; value: SearchScope }> = [
   { label: "公開筆記", value: "public" },
 ];
 
+function isSortMode(value: unknown): value is SortMode {
+  return value === "relevance" || value === "latest" || value === "popular";
+}
+
+function isSearchScope(value: unknown): value is SearchScope {
+  return value === "all" || value === "mine" || value === "public";
+}
+
+function readQueryValue(value: unknown) {
+  return Array.isArray(value) ? String(value[0] ?? "") : String(value ?? "");
+}
+
 const activeFilterCount = computed(() => [course.value, category.value, tag.value].filter(Boolean).length);
+const activeFilterChips = computed(() => [
+  { key: "course", label: course.value.trim() },
+  { key: "category", label: category.value.trim() },
+  { key: "tag", label: tag.value.trim() },
+].filter((item) => item.label));
 const hasQueryCondition = computed(() => Boolean(keyword.value.trim() || course.value.trim() || category.value.trim() || tag.value.trim()));
 const totalResultText = computed(() => {
   if (!hasSearched.value || !meta.value) return "尚未搜尋";
@@ -48,6 +72,39 @@ const totalResultText = computed(() => {
 const currentScopeLabel = computed(() => scopeOptions.find((option) => option.value === (meta.value?.scope ?? scope.value))?.label ?? "全部可見");
 const currentSortLabel = computed(() => sortOptions.find((option) => option.value === (meta.value?.sort ?? sort.value))?.label ?? "相關度");
 const topScore = computed(() => Math.max(...notes.value.map((note) => note.score ?? 0), 1));
+
+function syncUrlQuery() {
+  syncingUrl.value = true;
+  const query = {
+    q: keyword.value.trim() || undefined,
+    course: course.value.trim() || undefined,
+    category: category.value.trim() || undefined,
+    tag: tag.value.trim() || undefined,
+    sort: sort.value !== "relevance" ? sort.value : undefined,
+    scope: scope.value !== "all" ? scope.value : undefined,
+    page: page.value > 1 ? String(page.value) : undefined,
+  };
+
+  router.replace({ path: "/search", query }).finally(() => {
+    window.setTimeout(() => {
+      syncingUrl.value = false;
+    }, 0);
+  });
+}
+
+function applyQueryState() {
+  keyword.value = readQueryValue(route.query.q);
+  course.value = readQueryValue(route.query.course);
+  category.value = readQueryValue(route.query.category);
+  tag.value = readQueryValue(route.query.tag);
+  const routeSort = readQueryValue(route.query.sort);
+  const routeScope = readQueryValue(route.query.scope);
+  sort.value = isSortMode(routeSort) ? routeSort : "relevance";
+  scope.value = isSearchScope(routeScope) ? routeScope : "all";
+  const routePage = Number(readQueryValue(route.query.page));
+  page.value = Number.isFinite(routePage) && routePage > 0 ? routePage : 1;
+  showAdvancedFilters.value = Boolean(course.value || category.value || tag.value);
+}
 
 function getScoreLevel(score?: number) {
   const value = score ?? 0;
@@ -116,7 +173,9 @@ function getReasonItems(note: Note) {
 async function fetchSearchResults() {
   loading.value = true;
   errorMessage.value = "";
+  toastMessage.value = "";
   hasSearched.value = true;
+  syncUrlQuery();
 
   try {
     const res = await api.get<SearchResponse>("/search", {
@@ -137,6 +196,8 @@ async function fetchSearchResults() {
   } catch (error) {
     console.error(error);
     errorMessage.value = "目前無法完成搜尋，請稍後再試。";
+    toastType.value = "error";
+    toastMessage.value = "搜尋失敗，請稍後再試。";
   } finally {
     loading.value = false;
   }
@@ -188,6 +249,7 @@ function handleReset() {
   notes.value = [];
   meta.value = null;
   hasSearched.value = false;
+  router.replace({ path: "/search", query: {} });
 }
 
 function changePage(nextPage: number) {
@@ -207,26 +269,62 @@ async function toggleFavorite(note: Note) {
       await api.post("/favorites", { noteId: note.id });
       note.favorites = [{}];
       note.favoriteCount = (note.favoriteCount ?? 0) + 1;
+      toastType.value = "success";
+      toastMessage.value = "已加入收藏";
     } else {
       await api.delete(`/favorites/${note.id}`);
       note.favorites = [];
       note.favoriteCount = Math.max((note.favoriteCount ?? 1) - 1, 0);
+      toastType.value = "success";
+      toastMessage.value = "已取消收藏";
     }
   } catch (error) {
     console.error("收藏操作失敗", error);
-    alert("收藏操作失敗，請稍後再試");
+    errorMessage.value = "收藏失敗，請稍後再試。";
+    toastType.value = "error";
+    toastMessage.value = "收藏失敗，請稍後再試。";
   } finally {
     actionLoadingId.value = null;
   }
 }
+
+function clearFilterChip(key: string) {
+  if (key === "course") course.value = "";
+  if (key === "category") category.value = "";
+  if (key === "tag") tag.value = "";
+  page.value = 1;
+  if (hasSearched.value) fetchSearchResults();
+}
+
+onMounted(() => {
+  applyQueryState();
+  if (hasQueryCondition.value || route.query.sort || route.query.scope || route.query.page) {
+    fetchSearchResults();
+  }
+});
+
+watch(() => route.fullPath, () => {
+  if (syncingUrl.value) return;
+
+  applyQueryState();
+  if (hasQueryCondition.value || route.query.sort || route.query.scope || route.query.page) {
+    fetchSearchResults();
+  } else {
+    notes.value = [];
+    meta.value = null;
+    hasSearched.value = false;
+  }
+});
 </script>
 
 <template>
   <section class="search-page page-frame">
+    <ToastMessage v-if="toastMessage" :message="toastMessage" :type="toastType" />
+
     <header class="search-header">
       <div>
         <p class="page-kicker">搜尋筆記</p>
-        <h1>找到需要的課堂重點</h1>
+        <h1>搜尋課堂重點</h1>
         <p>搜尋公開筆記與自己的私人筆記，快速篩選課程、分類與標籤。</p>
       </div>
 
@@ -326,12 +424,25 @@ async function toggleFavorite(note: Note) {
           <button type="button" class="ghost-action" @click="clearAdvancedFilters">清除篩選</button>
         </div>
       </div>
+
+      <div v-if="activeFilterChips.length" class="active-filter-row">
+        <span>目前篩選</span>
+        <button
+          v-for="item in activeFilterChips"
+          :key="item.key"
+          type="button"
+          @click="clearFilterChip(item.key)"
+        >
+          {{ item.label }} ×
+        </button>
+      </div>
     </section>
 
     <section class="result-toolbar">
       <div>
         <strong>{{ totalResultText }}</strong>
         <span v-if="hasSearched">範圍：{{ currentScopeLabel }} ｜ 排序：{{ currentSortLabel }}</span>
+        <span v-if="meta?.expandedTerms?.length">實際比對：{{ meta.expandedTerms.join("、") }}</span>
         <span v-else>輸入關鍵字或點選範例開始搜尋。</span>
       </div>
     </section>
@@ -433,26 +544,33 @@ async function toggleFavorite(note: Note) {
 </template>
 
 <style scoped>
-.search-page {
-  padding: 18px 0 64px;
-}
+.search-page { padding: 8px 0 64px; }
 
 .search-header {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: end;
   gap: 18px;
-  padding: 20px 22px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #ffffff;
+  padding: 22px 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: rgba(255, 250, 240, 0.86);
   box-shadow: var(--shadow-soft);
+}
+
+.search-header::before {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  border: 1px solid rgba(183, 121, 34, 0.18);
+  pointer-events: none;
 }
 
 .search-header h1 {
   margin: 0;
   color: var(--ink);
-  font-size: clamp(30px, 4vw, 46px);
+  font-size: clamp(28px, 3.6vw, 42px);
   line-height: 1.08;
   letter-spacing: 0;
 }
@@ -465,11 +583,11 @@ async function toggleFavorite(note: Note) {
 }
 
 .search-toolbar {
-  margin-top: 14px;
+  margin-top: 12px;
   padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: rgba(255, 250, 240, 0.84);
   box-shadow: var(--shadow-soft);
 }
 
@@ -497,18 +615,19 @@ async function toggleFavorite(note: Note) {
 }
 
 .main-search-field input {
-  min-height: 54px;
-  border-radius: 8px;
+  min-height: 56px;
+  border-radius: 4px;
   font-size: 16px;
-  font-weight: 750;
+  font-weight: 780;
+  background: #fff7e8;
 }
 
 .run-search-btn {
-  min-height: 54px;
+  min-height: 56px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 4px;
   color: white;
-  background: var(--blue);
+  background: linear-gradient(180deg, #c99637, #8f5d16);
   font-weight: 850;
   box-shadow: 0 12px 22px rgba(47, 111, 237, 0.18);
 }
@@ -532,22 +651,22 @@ async function toggleFavorite(note: Note) {
 .advanced-toggle,
 .reset-link {
   border: 1px solid var(--line);
-  border-radius: 8px;
-  color: #334155;
-  background: #ffffff;
+  border-radius: 999px;
+  color: #57422b;
+  background: #fffaf0;
   font-weight: 800;
 }
 
 .quick-row button {
-  padding: 7px 10px;
+  padding: 7px 11px;
   font-size: 13px;
 }
 
 .quick-row button.active,
 .quick-row button:hover {
   color: white;
-  border-color: var(--blue);
-  background: var(--blue);
+  border-color: var(--wine);
+  background: var(--wine);
 }
 
 .toolbar-grid {
@@ -577,9 +696,9 @@ async function toggleFavorite(note: Note) {
 }
 
 .segmented-control button.active {
-  color: #1d4ed8;
-  border-color: #bfdbfe;
-  background: #eff6ff;
+  color: #6f2430;
+  border-color: #d9ad55;
+  background: #fff4df;
 }
 
 .filter-toggle-row {
@@ -605,9 +724,9 @@ async function toggleFavorite(note: Note) {
   place-items: center;
   min-width: 22px;
   height: 22px;
-  border-radius: 7px;
+  border-radius: 999px;
   color: white;
-  background: var(--blue);
+  background: var(--wine);
   font-size: 12px;
 }
 
@@ -623,9 +742,34 @@ async function toggleFavorite(note: Note) {
   align-items: end;
   margin-top: 14px;
   padding: 14px;
-  border: 1px dashed #cbd5e1;
-  border-radius: 12px;
-  background: #f9fafb;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #f4ead5;
+}
+
+.active-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.active-filter-row > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.active-filter-row button {
+  border: 1px solid #bad1ff;
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: var(--blue);
+  background: #edf4ff;
+  font-weight: 800;
 }
 
 .filter-actions {
@@ -648,14 +792,14 @@ async function toggleFavorite(note: Note) {
 }
 
 .result-toolbar strong {
-  color: #111827;
+  color: var(--ink);
   font-size: 22px;
   letter-spacing: 0;
 }
 
 .result-toolbar span {
   margin-top: 4px;
-  color: #64748b;
+  color: var(--muted);
 }
 
 .result-list {
@@ -664,14 +808,23 @@ async function toggleFavorite(note: Note) {
 }
 
 .result-card {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 124px;
   gap: 18px;
-  padding: 18px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #ffffff;
+  padding: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: linear-gradient(180deg, rgba(255,250,240,.94), rgba(248,239,223,.9));
   box-shadow: var(--shadow-soft);
+}
+
+.result-card::before {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  border: 1px solid rgba(183, 121, 34, 0.14);
+  pointer-events: none;
 }
 
 .result-main {
@@ -695,9 +848,9 @@ async function toggleFavorite(note: Note) {
 .meta-chips span,
 .tag-list span {
   padding: 6px 9px;
-  border-radius: 8px;
-  color: #334155;
-  background: #f1f5f9;
+  border-radius: 999px;
+  color: #57422b;
+  background: #f4ead5;
   font-size: 12px;
   font-weight: 750;
 }
@@ -717,22 +870,22 @@ async function toggleFavorite(note: Note) {
 .relevance-pill {
   min-width: 118px;
   padding: 8px;
-  border: 1px solid #bfdbfe;
-  border-radius: 10px;
-  background: #eff6ff;
+  border: 1px solid #d9ad55;
+  border-radius: 4px;
+  background: #fff4df;
 }
 
 .relevance-pill i {
   display: block;
   height: 6px;
   border-radius: 999px;
-  background: var(--blue);
+  background: var(--amber);
 }
 
 .relevance-pill span {
   display: block;
   margin-top: 6px;
-  color: #1d4ed8;
+  color: #7f4f10;
   font-size: 12px;
   font-weight: 850;
 }
@@ -740,7 +893,7 @@ async function toggleFavorite(note: Note) {
 .result-title {
   display: block;
   margin: 13px 0 8px;
-  color: #0f172a;
+  color: var(--ink);
   font-size: 24px;
   line-height: 1.2;
   font-weight: 850;
@@ -772,8 +925,8 @@ async function toggleFavorite(note: Note) {
 }
 
 .tag-list .more-tags {
-  color: #1d4ed8;
-  background: #eff6ff;
+  color: var(--blue);
+  background: #edf4ff;
 }
 
 .score-detail {
@@ -784,9 +937,9 @@ async function toggleFavorite(note: Note) {
   width: fit-content;
   padding: 9px 11px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  color: #334155;
-  background: #f8fafc;
+  border-radius: 4px;
+  color: #57422b;
+  background: #fff7e8;
   cursor: pointer;
   font-size: 13px;
   font-weight: 850;
@@ -796,9 +949,9 @@ async function toggleFavorite(note: Note) {
   margin: 10px 0 0;
   padding: 12px 14px 12px 30px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  color: #475569;
-  background: #ffffff;
+  border-radius: 4px;
+  color: var(--muted);
+  background: #fffaf0;
   line-height: 1.7;
 }
 
@@ -815,7 +968,7 @@ async function toggleFavorite(note: Note) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 4px;
   font-size: 13px;
   font-weight: 850;
   text-decoration: none;
@@ -823,8 +976,8 @@ async function toggleFavorite(note: Note) {
 
 .favorite-action {
   border: 1px solid var(--line);
-  color: #475467;
-  background: #ffffff;
+  color: #57422b;
+  background: #fffaf0;
 }
 
 .favorite-action.active {
@@ -835,7 +988,7 @@ async function toggleFavorite(note: Note) {
 
 .open-action {
   color: white;
-  background: var(--ink);
+  background: var(--slate);
 }
 
 .empty-actions {
@@ -882,7 +1035,7 @@ async function toggleFavorite(note: Note) {
 
 @media (max-width: 620px) {
   .search-page {
-    padding-top: 14px;
+    padding-top: 6px;
   }
 
   .search-header,
@@ -899,13 +1052,15 @@ async function toggleFavorite(note: Note) {
   .segmented-control,
   .filter-toggle-row,
   .filter-actions,
-  .empty-actions {
+  .empty-actions,
+  .active-filter-row {
     flex-direction: column;
   }
 
   .segmented-control button,
   .advanced-toggle,
   .reset-link,
+  .active-filter-row button,
   .favorite-action,
   .open-action {
     width: 100%;

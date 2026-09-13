@@ -358,29 +358,40 @@ async function handlePdfUpload() {
 
 <style scoped>
 .create-page {
-  padding: 22px 0 60px;
+  padding: 14px 0 64px;
 }
 
 .create-hero,
 .content-panel {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #ffffff;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: rgba(255, 250, 240, 0.86);
   box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px);
 }
 
 .create-hero {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: end;
   gap: 20px;
-  padding: 24px;
+  padding: 26px;
   color: var(--ink);
+}
+
+.create-hero::before,
+.content-panel::before {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  border: 1px solid rgba(183, 121, 34, 0.16);
+  pointer-events: none;
 }
 
 h1 {
   margin: 0;
-  font-size: clamp(34px, 5vw, 54px);
+  font-size: clamp(34px, 4.6vw, 52px);
   line-height: 1.08;
   letter-spacing: 0;
 }
@@ -398,20 +409,23 @@ h1 {
 }
 
 .mode-tabs {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin: 18px 0;
-  padding: 8px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.78);
+  padding: 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: rgba(255, 250, 240, 0.72);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px);
 }
 
 .mode-tabs button {
   min-height: 74px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 4px;
   padding: 14px 16px;
   color: #475467;
   background: transparent;
@@ -437,8 +451,9 @@ h1 {
 }
 
 .mode-tabs button.active {
-  border-color: #bfdbfe;
-  background: #eff6ff;
+  border-color: #d9ad55;
+  background: linear-gradient(180deg, #fff4df 0%, #fffaf0 100%);
+  box-shadow: 0 14px 28px rgba(143, 93, 22, 0.1);
 }
 
 .mode-tabs button.active strong {
@@ -446,7 +461,8 @@ h1 {
 }
 
 .content-panel {
-  padding: 24px;
+  position: relative;
+  padding: 26px;
 }
 
 .panel-intro {
@@ -476,8 +492,8 @@ h1 {
   gap: 14px;
   padding: 18px;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #f9fafb;
+  border-radius: 5px;
+  background: #f4ead5;
 }
 
 .section-title h3 {
@@ -520,16 +536,16 @@ label span,
 }
 
 .upload-dropzone {
-  min-height: 190px;
+  min-height: 176px;
   padding: 24px;
   display: grid;
   place-items: center;
   align-content: center;
   gap: 10px;
   border: 1px dashed #93c5fd;
-  border-radius: 14px;
+  border-radius: 5px;
   color: var(--ink);
-  background: #eff6ff;
+  background: linear-gradient(180deg, #edf4ff 0%, #fff7e8 100%);
   text-align: center;
 }
 
@@ -543,9 +559,9 @@ label span,
   place-items: center;
   width: 58px;
   height: 58px;
-  border-radius: 14px;
+  border-radius: 16px;
   color: white;
-  background: var(--blue);
+  background: linear-gradient(135deg, var(--blue) 0%, var(--blue-strong) 100%);
   font-size: 15px;
   font-weight: 850;
 }
@@ -571,10 +587,10 @@ label span,
 
 .notice-list span {
   padding: 8px 10px;
-  border: 1px solid #bfdbfe;
-  border-radius: 8px;
-  color: #1d4ed8;
-  background: #ffffff;
+  border: 1px solid #d9ad55;
+  border-radius: 999px;
+  color: #6f2430;
+  background: #fffaf0;
   font-size: 13px;
   font-weight: 750;
 }
@@ -590,13 +606,13 @@ label span,
   align-items: start;
   padding: 14px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #ffffff;
+  border-radius: 5px;
+  background: #fffaf0;
 }
 
 .visibility-options label.active {
-  border-color: #bfdbfe;
-  background: #eff6ff;
+  border-color: #d9ad55;
+  background: linear-gradient(180deg, #fff4df 0%, #fffaf0 100%);
 }
 
 .visibility-options input {
@@ -633,8 +649,8 @@ label span,
   top: 110px;
   padding: 20px;
   border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #ffffff;
+  border-radius: 5px;
+  background: rgba(255,250,240,.9);
   box-shadow: var(--shadow-soft);
 }
 
@@ -653,8 +669,8 @@ label span,
 .preview-card dl div {
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #f9fafb;
+  border-radius: 12px;
+  background: #f4ead5;
 }
 
 .preview-card dt {
@@ -672,7 +688,7 @@ label span,
 .message {
   margin: 0;
   padding: 13px 14px;
-  border-radius: 10px;
+  border-radius: 12px;
   font-weight: 800;
 }
 
@@ -709,9 +725,10 @@ label span,
 .submit-button {
   min-height: 52px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 12px;
   color: white;
-  background: var(--blue);
+  background: linear-gradient(180deg, #c99637, #8f5d16);
+  box-shadow: 0 16px 28px rgba(143, 93, 22, 0.16);
   font-size: 16px;
   font-weight: 800;
 }

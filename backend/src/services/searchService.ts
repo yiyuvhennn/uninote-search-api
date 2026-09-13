@@ -30,6 +30,7 @@ type SearchMeta = {
   totalPages: number;
   cache: "hit" | "miss";
   candidateLimit: number;
+  expandedTerms: string[];
 };
 
 type SearchResult = {
@@ -433,6 +434,7 @@ export async function searchNotes(
       totalPages,
       cache: "miss",
       candidateLimit: CANDIDATE_LIMIT,
+      expandedTerms: queryTerms,
     },
   };
 

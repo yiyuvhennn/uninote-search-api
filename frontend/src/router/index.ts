@@ -8,6 +8,8 @@ import FavoritesPage from "../pages/FavoritesPage.vue";
 import CreateNotePage from "../pages/CreateNotePage.vue";
 import SearchPage from "../pages/SearchPage.vue";
 import SettingsPage from "../pages/SettingsPage.vue";
+import ForgotPasswordPage from "../pages/ForgotPasswordPage.vue";
+import ResetPasswordPage from "../pages/ResetPasswordPage.vue";
 
 const protectedPages = ["/notes", "/search", "/favorites", "/create", "/settings"];
 
@@ -17,6 +19,8 @@ const router = createRouter({
     { path: "/", component: HomePage },
     { path: "/login", component: LoginPage, meta: { layout: "auth", guestOnly: true } },
     { path: "/register", component: RegisterPage, meta: { layout: "auth", guestOnly: true } },
+    { path: "/forgot-password", component: ForgotPasswordPage, meta: { layout: "auth", guestOnly: true } },
+    { path: "/reset-password", component: ResetPasswordPage, meta: { layout: "auth", guestOnly: true } },
     { path: "/search", component: SearchPage, meta: { requiresAuth: true } },
     { path: "/notes", component: NotesPage, meta: { requiresAuth: true } },
     { path: "/notes/:id", component: NoteDetailPage, meta: { requiresAuth: true } },

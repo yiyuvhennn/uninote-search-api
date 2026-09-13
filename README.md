@@ -216,15 +216,17 @@ titleMatch * 0.32
 
 ```txt
 total =
-relevance * 0.55
-+ quality * 0.15
-+ popularity * 0.20
+relevance * 0.45
++ textSimilarity * 0.15
++ quality * 0.12
++ popularity * 0.18
 + recency * 0.10
 ```
 
 設計理由：
 
 - 搜尋結果最重要的是相關性，所以 relevance 最高
+- textSimilarity 衡量 query tokens 與整份 searchText 的重疊程度
 - quality 避免空內容或低品質資料排太前面
 - popularity 反映使用者互動
 - recency 讓新資料有機會曝光，但不讓新資料直接壓過相關性
@@ -249,6 +251,7 @@ relevance * 0.55
         "tagMatch": 70,
         "descriptionMatch": 70,
         "contentMatch": 45,
+        "textSimilarity": 80,
         "relevance": 74.4,
         "quality": 91,
         "popularity": 48.6,
@@ -511,6 +514,13 @@ Backend 預設：
 
 ```txt
 http://localhost:3000
+```
+
+後端狀態檢查：
+
+```txt
+GET http://localhost:3000/health/live   # API process 存活即回 200
+GET http://localhost:3000/health/ready  # PostgreSQL 可連線才回 200，否則 503
 ```
 
 測試 API：

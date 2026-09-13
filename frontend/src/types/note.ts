@@ -61,6 +61,7 @@ export interface SearchMeta {
   totalPages: number;
   cache: "hit" | "miss";
   candidateLimit?: number;
+  expandedTerms?: string[];
 }
 
 export interface SearchResponse {

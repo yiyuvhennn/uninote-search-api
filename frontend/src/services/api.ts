@@ -20,6 +20,15 @@ api.interceptors.response.use(
   (error) => {
     if (error?.response?.status === 401) {
       localStorage.removeItem("token");
+
+      // 避免 token 失效後仍停在受保護頁面，只看到模糊的「讀取失敗」。
+      // 使用 location 重新載入，確保所有殘留的使用者畫面狀態一併清除。
+      if (window.location.pathname !== "/login") {
+        const redirect = `${window.location.pathname}${window.location.search}`;
+        window.location.replace(
+          `/login?reason=session-expired&redirect=${encodeURIComponent(redirect)}`
+        );
+      }
     }
 
     return Promise.reject(error);

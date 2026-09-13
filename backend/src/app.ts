@@ -7,7 +7,8 @@ import authRoutes from "./routes/authRoutes";
 import favoriteRoutes from "./routes/favoriteRoutes";
 import searchRoutes from "./routes/searchRoutes";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
-import { apiRateLimiter, authRateLimiter } from "./middlewares/rateLimit";
+import { apiRateLimiter } from "./middlewares/rateLimit";
+import { prisma } from "./lib/prisma";
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
@@ -55,8 +56,24 @@ app.get("/", (_req, res) => {
   res.json({ message: "UniNotes Search API is running" });
 });
 
+// 給本機開發、Docker 與部署平台使用的存活檢查，不依賴資料庫。
+app.get("/health/live", (_req, res) => {
+  res.json({ status: "ok", service: "uninote-search-api" });
+});
+
+// 就緒檢查會實際確認 PostgreSQL；資料庫不可用時回傳 503。
+app.get("/health/ready", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: "ready", database: "up" });
+  } catch (error) {
+    console.error("Readiness check failed:", error);
+    res.status(503).json({ status: "unavailable", database: "down" });
+  }
+});
+
 app.use("/notes", noteRoutes);
-app.use("/auth", authRateLimiter, authRoutes);
+app.use("/auth", authRoutes);
 app.use("/favorites", favoriteRoutes);
 app.use("/search", searchRoutes);
 app.use(notFoundHandler);

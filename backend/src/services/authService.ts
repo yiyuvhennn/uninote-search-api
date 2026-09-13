@@ -2,6 +2,9 @@ import bcrypt from "bcrypt";
 import { prisma } from "../lib/prisma";
 import jwt from 'jsonwebtoken';
 import { clearCache } from "../utils/cache";
+import { createHash, randomBytes } from "node:crypto";
+import { sendPasswordResetEmail } from "./emailService";
+import { removeStoredPdf } from "./uploadStorageService";
 
 function selectSafeUser() {
   return {
@@ -22,8 +25,9 @@ export const registerUser = async (
     throw new Error("Name, email and password are required");
   }
 
+  const normalizedEmail = email.trim().toLowerCase();
   const existingUser = await prisma.user.findUnique({
-    where: { email },
+    where: { email: normalizedEmail },
   });
 
   if (existingUser) {
@@ -35,7 +39,7 @@ export const registerUser = async (
   const newUser = await prisma.user.create({
     data: {
       name,
-      email,
+      email: normalizedEmail,
       password: hashedPassword,
     },
     select: {
@@ -52,7 +56,7 @@ export const loginUser = async (email: string, password: string) => {
   }
 
   const user = await prisma.user.findUnique({
-    where: { email },
+    where: { email: email.trim().toLowerCase() },
   });
 
   if (!user) {
@@ -84,6 +88,65 @@ export const loginUser = async (email: string, password: string) => {
       updatedAt: user.updatedAt,
     },
   };
+};
+
+function hashResetToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+export const requestPasswordReset = async (email: unknown) => {
+  const result: { message: string; resetUrl?: string } = {
+    message: "如果此 Email 已註冊，系統會提供密碼重設方式。",
+  };
+  if (typeof email !== "string" || !email.trim()) return result;
+
+  const user = await prisma.user.findUnique({
+    where: { email: email.trim().toLowerCase() },
+  });
+  if (!user) return result;
+
+  await prisma.passwordResetToken.deleteMany({ where: { userId: user.id } });
+  const token = randomBytes(32).toString("hex");
+  await prisma.passwordResetToken.create({
+    data: {
+      tokenHash: hashResetToken(token),
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      userId: user.id,
+    },
+  });
+
+  const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+  const resetUrl = `${frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
+  const emailSent = await sendPasswordResetEmail(user.email, resetUrl);
+
+  if (process.env.NODE_ENV !== "production" && !emailSent) result.resetUrl = resetUrl;
+  return result;
+};
+
+export const resetPasswordWithToken = async (
+  token: unknown,
+  newPassword: unknown,
+  confirmPassword: unknown
+) => {
+  if (typeof token !== "string" || !token) throw new Error("重設連結無效");
+  if (typeof newPassword !== "string" || newPassword.length < 6) {
+    throw new Error("新密碼至少需要 6 個字元");
+  }
+  if (newPassword !== confirmPassword) throw new Error("兩次輸入的密碼不一致");
+
+  const resetRecord = await prisma.passwordResetToken.findUnique({
+    where: { tokenHash: hashResetToken(token) },
+  });
+  if (!resetRecord || resetRecord.usedAt || resetRecord.expiresAt <= new Date()) {
+    throw new Error("重設連結無效或已過期，請重新申請");
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: resetRecord.userId }, data: { password: hashedPassword } }),
+    prisma.passwordResetToken.update({ where: { id: resetRecord.id }, data: { usedAt: new Date() } }),
+  ]);
+  return { message: "密碼已更新，請使用新密碼登入。" };
 };
 
 export const getCurrentUser = async (userId: number) => {
@@ -190,6 +253,11 @@ export const deleteCurrentUser = async (
     throw new Error("Current password is incorrect");
   }
 
+  const storedFiles = await prisma.note.findMany({
+    where: { authorId: userId },
+    select: { fileUrl: true },
+  });
+
   await prisma.$transaction(async (tx) => {
     const notes = await tx.note.findMany({
       where: { authorId: userId },
@@ -234,6 +302,8 @@ export const deleteCurrentUser = async (
       where: { id: userId },
     });
   });
+
+  await Promise.all(storedFiles.map((note) => removeStoredPdf(note.fileUrl)));
 
   clearCache();
 

@@ -14,6 +14,11 @@ import {
   validatePdfMagicNumber,
   validatePdfMimeType,
 } from "../utils/fileValidation";
+import {
+  parseStoredPdfReference,
+  removeStoredPdf,
+  savePdfFile,
+} from "../services/uploadStorageService";
 
 const router = Router();
 type NoteScope = "all" | "mine" | "public";
@@ -362,10 +367,13 @@ router.post(
       const category = String(req.body.category || "PDF 匯入").trim();
       const visibility = normalizeVisibility(req.body.visibility);
       const description = "由 PDF 匯入";
-      const fileUrl = `uploaded-pdf:${Date.now()}-${safeFilename}`;
+      const fileUrl = await savePdfFile(req.file.buffer, safeFilename);
 
-      const note = await prisma.note.create({
-        data: {
+      let note;
+
+      try {
+        note = await prisma.note.create({
+          data: {
           title,
           description,
           content,
@@ -392,8 +400,8 @@ router.post(
               },
             })),
           },
-        },
-        include: {
+          },
+          include: {
           author: {
             select: {
               id: true,
@@ -406,8 +414,12 @@ router.post(
               tag: true,
             },
           },
-        },
-      });
+          },
+        });
+      } catch (error) {
+        await removeStoredPdf(fileUrl);
+        throw error;
+      }
 
       clearCache();
 
@@ -435,6 +447,41 @@ router.post(
     }
   }
 );
+
+router.get("/:id/file", authMiddleware, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const userId = req.user?.userId;
+
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "Invalid note id" });
+    }
+
+    const note = await prisma.note.findFirst({
+      where: {
+        id,
+        OR: [{ authorId: userId }, { visibility: "PUBLIC" }],
+      },
+      select: { fileUrl: true },
+    });
+    const storedPdf = parseStoredPdfReference(note?.fileUrl);
+
+    if (!storedPdf) {
+      return res.status(404).json({ message: "PDF file not found" });
+    }
+
+    res.type("application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename*=UTF-8''${encodeURIComponent(storedPdf.originalName)}`
+    );
+    return res.sendFile(storedPdf.absolutePath);
+  } catch (error) {
+    console.error("Get PDF file error:", error);
+    return res.status(404).json({ message: "PDF file not found" });
+  }
+});
 
 router.get("/:id", authMiddleware, async (req, res) => {
   try {
@@ -546,6 +593,8 @@ router.delete("/:id", authMiddleware, async (req, res) => {
     await prisma.note.delete({
       where: { id: noteId },
     });
+
+    await removeStoredPdf(note.fileUrl);
 
     clearCache();
 

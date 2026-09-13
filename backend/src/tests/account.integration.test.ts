@@ -84,6 +84,48 @@ afterAll(async () => {
 });
 
 describe("Account Settings integration", () => {
+  it("resets a forgotten password with a one-time development link", async () => {
+    await resetData();
+    const email = "forgot-password@test.com";
+    await registerAndLogin(email, "Forgot Password");
+
+    const forgotRes = await request(app)
+      .post("/auth/forgot-password")
+      .send({ email });
+    expect(forgotRes.status).toBe(200);
+    expect(forgotRes.body.resetUrl).toContain("/reset-password?token=");
+    const token = new URL(forgotRes.body.resetUrl).searchParams.get("token");
+
+    const resetRes = await request(app).post("/auth/reset-password").send({
+      token,
+      newPassword: "new-forgot-pass",
+      confirmPassword: "new-forgot-pass",
+    });
+    const reusedRes = await request(app).post("/auth/reset-password").send({
+      token,
+      newPassword: "another-pass",
+      confirmPassword: "another-pass",
+    });
+    const loginRes = await request(app).post("/auth/login").send({
+      email,
+      password: "new-forgot-pass",
+    });
+
+    expect(resetRes.status).toBe(200);
+    expect(reusedRes.status).toBe(400);
+    expect(loginRes.status).toBe(200);
+  });
+
+  it("does not reveal whether a forgot-password email exists", async () => {
+    await resetData();
+    const res = await request(app)
+      .post("/auth/forgot-password")
+      .send({ email: "does-not-exist@test.com" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty("resetUrl");
+  });
+
   it("GET /auth/me requires authentication", async () => {
     await resetData();
 
