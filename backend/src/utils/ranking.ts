@@ -182,8 +182,8 @@ function calculateQualityScore(note: RankableNote) {
  */
 function calculatePopularityScore(note: RankableNote) {
   const favoriteCount = note.favorites?.length || 0;
-  const views = note.views || 0;
-  const likes = note.likes || 0;
+  const views = Number.isFinite(note.views) ? Math.max(note.views || 0, 0) : 0;
+  const likes = Number.isFinite(note.likes) ? Math.max(note.likes || 0, 0) : 0;
 
   const viewScore = Math.log1p(views) * 10;
   const likeScore = Math.log1p(likes) * 16;

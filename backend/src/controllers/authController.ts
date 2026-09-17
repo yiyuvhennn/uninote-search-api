@@ -10,6 +10,21 @@ import {
   updateCurrentUser,
 } from "../services/authService";
 
+const publicAuthMessages = new Set([
+  "Name, email and password are required",
+  "Email already exists",
+  "Email and password are required",
+  "Invalid email or password",
+]);
+
+function getPublicAuthMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && publicAuthMessages.has(error.message)) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
 export const register = async (req: Request, res: Response) => {
   try {
     const { name, email, password } = req.body;
@@ -21,8 +36,9 @@ export const register = async (req: Request, res: Response) => {
       user,
     });
   } catch (error: any) {
+    console.error("Register error:", error);
     return res.status(400).json({
-      message: error.message || "Register failed",
+      message: getPublicAuthMessage(error, "目前無法完成註冊，請稍後再試"),
     });
   }
 };
@@ -38,8 +54,9 @@ export const login = async (req: Request, res: Response) => {
       ...result,
     });
   } catch (error: any) {
+    console.error("Login error:", error);
     return res.status(400).json({
-      message: error.message || "Login failed",
+      message: getPublicAuthMessage(error, "目前無法完成登入，請稍後再試"),
     });
   }
 };

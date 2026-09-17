@@ -104,11 +104,11 @@ function titlesFromSearch(res: request.Response) {
 }
 
 function titlesFromNotes(res: request.Response) {
-  return (res.body as Array<{ title: string }>).map((note) => note.title);
+  return (res.body.data as Array<{ title: string }>).map((note) => note.title);
 }
 
 function findNoteFromNotes(res: request.Response, title: string) {
-  return (res.body as Array<{
+  return (res.body.data as Array<{
     title: string;
     fileUrl: string | null;
     tags: Array<{ id: number; name: string }>;
@@ -116,9 +116,7 @@ function findNoteFromNotes(res: request.Response, title: string) {
 }
 
 function titlesFromFavorites(res: request.Response) {
-  return (res.body as Array<{ note: { title: string } }>).map(
-    (favorite) => favorite.note.title
-  );
+  return (res.body.data as Array<{ title: string }>).map((note) => note.title);
 }
 
 async function uploadPdfNote(
@@ -380,6 +378,74 @@ describe("PUBLIC / PRIVATE note visibility integration", () => {
     ]);
   });
 
+  it("GET /notes returns stable pagination metadata", async () => {
+    const res = await request(app)
+      .get("/notes")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .query({ scope: "public", page: 1, pageSize: 1 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.meta).toMatchObject({
+      page: 1,
+      pageSize: 1,
+      total: 5,
+      totalPages: 5,
+    });
+    expect(res.body.data[0].author).not.toHaveProperty("email");
+    expect(res.body.data[0]).not.toHaveProperty("searchText");
+  });
+
+  it("rejects invalid list pagination", async () => {
+    const res = await request(app)
+      .get("/notes")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .query({ page: 0, pageSize: 0.5 });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects invalid visibility and deduplicates tags", async () => {
+    const invalidRes = await request(app)
+      .post("/notes")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({
+        title: "invalid visibility note",
+        course: "Integration Test",
+        visibility: "NOT_A_VISIBILITY",
+      });
+    expect(invalidRes.status).toBe(400);
+
+    const validRes = await request(app)
+      .post("/notes")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({
+        title: "deduplicated tags note",
+        course: "Integration Test",
+        tags: "duplicate,duplicate,unique",
+        visibility: "PUBLIC",
+      });
+    expect(validRes.status).toBe(201);
+    expect(validRes.body.note.tags.map((tag: { name: string }) => tag.name)).toEqual([
+      "duplicate",
+      "unique",
+    ]);
+  });
+
+  it("rejects array query parameters and hides search internals", async () => {
+    const invalidRes = await request(app)
+      .get("/search")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .query({ "q[]": ["scope-rule", "other"] });
+    expect(invalidRes.status).toBe(400);
+
+    const searchRes = await searchAs(tokenA, "scope-rule-a-public");
+    expect(searchRes.status).toBe(200);
+    expect(searchRes.body.data[0]).not.toHaveProperty("searchText");
+    expect(searchRes.body.data[0].author).not.toHaveProperty("email");
+    expect(searchRes.body.data[0]).toHaveProperty("isFavorited");
+  });
+
   it("A can favorite B's PUBLIC note", async () => {
     const res = await request(app)
       .post("/favorites")
@@ -397,6 +463,7 @@ describe("PUBLIC / PRIVATE note visibility integration", () => {
 
     expect(res.status).toBe(200);
     expect(titlesFromFavorites(res)).toContain("scope-rule-b-public");
+    expect(res.body.meta).toMatchObject({ page: 1, pageSize: 10, total: 1 });
   });
 
   it("A GET /favorites does not include B's PRIVATE note", async () => {

@@ -14,6 +14,18 @@ const app = express();
 const isProduction = process.env.NODE_ENV === "production";
 const allowedOrigins = new Set<string>();
 
+if (process.env.TRUST_PROXY) {
+  const trustProxyValue = Number(process.env.TRUST_PROXY);
+  app.set(
+    "trust proxy",
+    Number.isInteger(trustProxyValue) && trustProxyValue >= 0
+      ? trustProxyValue
+      : process.env.TRUST_PROXY === "true"
+  );
+} else if (isProduction) {
+  app.set("trust proxy", 1);
+}
+
 function normalizeOrigin(origin: string) {
   return origin.replace(/\/+$/, "");
 }

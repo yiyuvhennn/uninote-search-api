@@ -29,7 +29,6 @@ type SearchMeta = {
   total: number;
   totalPages: number;
   cache: "hit" | "miss";
-  candidateLimit: number;
   expandedTerms: string[];
 };
 
@@ -39,7 +38,6 @@ type SearchResult = {
     title: string;
     description: string | null;
     content: string | null;
-    searchText: string | null;
     fileUrl: string | null;
     course: string;
     category: string | null;
@@ -52,7 +50,6 @@ type SearchResult = {
     author: {
       id: number;
       name: string;
-      email: string;
     };
     tags: Array<{
       id: number;
@@ -62,13 +59,12 @@ type SearchResult = {
     favoriteCount: number;
     score: number;
     scoreDetail: ScoreDetail;
+    isFavorited: boolean;
   }>;
   meta: SearchMeta;
 };
 
 type SearchResultNote = SearchResult["data"][number];
-
-const CANDIDATE_LIMIT = 1000;
 
 function buildSearchNoteInclude(userId: number) {
   return {
@@ -76,7 +72,6 @@ function buildSearchNoteInclude(userId: number) {
       select: {
         id: true,
         name: true,
-        email: true,
       },
     },
     tags: {
@@ -290,18 +285,6 @@ function buildFilterWhere(normalized: ReturnType<typeof normalizeParams>) {
   ];
 }
 
-function buildRankingKeyword(normalized: ReturnType<typeof normalizeParams>) {
-  const parts = [
-    normalized.q,
-    normalized.course,
-    normalized.category,
-    normalized.tag,
-    ...expandQueryTerms(normalized.q),
-  ].filter(Boolean);
-
-  return Array.from(new Set(parts)).join(" ");
-}
-
 function getPopularValue(note: {
   views: number;
   likes: number;
@@ -334,11 +317,6 @@ export async function searchNotes(
     };
   }
 
-  /**
-   * Candidate Retrieval：
-   * 先從資料庫召回最多 1000 筆候選資料。
-   * 不直接對全資料庫做 ranking，避免資料量變大後變慢。
-   */
   const notes = await prisma.note.findMany({
     where: {
       AND: [
@@ -350,13 +328,10 @@ export async function searchNotes(
       ],
     },
     include: buildSearchNoteInclude(userId),
-    take: CANDIDATE_LIMIT,
     orderBy: {
       createdAt: "desc",
     },
   });
-
-  const rankingKeyword = buildRankingKeyword(normalized);
 
   const scoredNotes: SearchResultNote[] = notes.map((note) => {
     const tags = note.tags.map((item) => item.tag);
@@ -375,14 +350,13 @@ export async function searchNotes(
       favorites: Array.from({ length: favoriteCount }),
       tags,
     };
-    const scoreDetail = calculateNoteScore(rankableNote, rankingKeyword);
+    const scoreDetail = calculateNoteScore(rankableNote, normalized.q);
 
     return {
       id: note.id,
       title: note.title,
       description: note.description,
       content: note.content,
-      searchText: note.searchText,
       fileUrl: note.fileUrl,
       course: note.course,
       category: note.category,
@@ -396,6 +370,7 @@ export async function searchNotes(
       tags,
       favorites: note.favorites,
       favoriteCount,
+      isFavorited: note.favorites.length > 0,
       score: scoreDetail.total,
       scoreDetail,
     };
@@ -403,14 +378,17 @@ export async function searchNotes(
 
   scoredNotes.sort((a, b) => {
     if (normalized.sort === "latest") {
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      return (
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+        b.id - a.id
+      );
     }
 
     if (normalized.sort === "popular") {
-      return getPopularValue(b) - getPopularValue(a);
+      return getPopularValue(b) - getPopularValue(a) || b.id - a.id;
     }
 
-    return b.score - a.score;
+    return b.score - a.score || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() || b.id - a.id;
   });
 
   const total = scoredNotes.length;
@@ -433,7 +411,6 @@ export async function searchNotes(
       total,
       totalPages,
       cache: "miss",
-      candidateLimit: CANDIDATE_LIMIT,
       expandedTerms: queryTerms,
     },
   };

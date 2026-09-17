@@ -19,6 +19,7 @@ import {
   removeStoredPdf,
   savePdfFile,
 } from "../services/uploadStorageService";
+import { buildPaginationMeta, parsePagination } from "../utils/pagination";
 
 const router = Router();
 type NoteScope = "all" | "mine" | "public";
@@ -100,25 +101,53 @@ const uploadPdfFile = (req: Request, res: Response, next: NextFunction) => {
  * 支援用逗號、中文逗號或空白分隔，例如：「期中考,工程數學」。
  */
 function parseTagsInput(value: unknown): string[] {
+  let tags: string[];
   if (Array.isArray(value)) {
-    return value
+    tags = value
       .flatMap((item) => parseTagsInput(item))
       .map((tag) => tag.trim())
       .filter(Boolean);
-  }
-
-  if (typeof value !== "string") {
+  } else if (typeof value === "string") {
+    tags = value
+      .split(/[,\uFF0C\u3001\s]+/)
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+  } else {
     return [];
   }
 
-  return value
-    .split(/[,\uFF0C\u3001\s]+/)
-    .map((tag) => tag.trim())
-    .filter(Boolean);
+  return Array.from(new Set(tags)).slice(0, 30);
+}
+
+function normalizeExternalFileUrl(value: unknown) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") throw new Error("fileUrl must be a valid http or https URL");
+
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    throw new Error("fileUrl must be a valid http or https URL");
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("fileUrl must be a valid http or https URL");
+  }
+
+  return url.toString();
+}
+
+function readOptionalQueryText(value: unknown, field: string) {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") throw new Error(`${field} must be a single string`);
+  if (value.length > 200) throw new Error(`${field} must be 200 characters or fewer`);
+  return value;
 }
 
 function normalizeVisibility(value: unknown) {
-  return value === "PRIVATE" ? "PRIVATE" : "PUBLIC";
+  if (value === undefined || value === "PUBLIC") return "PUBLIC";
+  if (value === "PRIVATE") return "PRIVATE";
+  throw new Error("visibility must be PUBLIC or PRIVATE");
 }
 
 function normalizeScope(value: unknown): NoteScope {
@@ -139,23 +168,26 @@ function buildVisibleNoteWhere(userId: number, scope: NoteScope) {
   };
 }
 
-function formatNoteResponse<T extends { tags?: Array<{ tag: { id: number; name: string } }> }>(
-  note: T
-) {
+function formatNoteResponse(note: any) {
+  const { searchText: _searchText, _count, favorites, author, tags, ...safeNote } = note;
   return {
-    ...note,
-    tags: note.tags?.map((item) => item.tag) ?? [],
+    ...safeNote,
+    author: author ? { id: author.id, name: author.name } : undefined,
+    tags: tags?.map((item: { tag: { id: number; name: string } }) => item.tag) ?? [],
+    favoriteCount: _count?.favorites ?? 0,
+    isFavorited: Boolean(favorites?.length),
   };
 }
 
 router.get("/", authMiddleware, async (req, res) => {
   try {
     const userId = req.user?.userId;
+    const pagination = parsePagination(req.query);
     const scope = normalizeScope(req.query.scope);
-    const keyword = req.query.keyword as string | undefined;
-    const course = req.query.course as string | undefined;
-    const category = req.query.category as string | undefined;
-    const tag = req.query.tag as string | undefined;
+    const keyword = readOptionalQueryText(req.query.keyword, "keyword");
+    const course = readOptionalQueryText(req.query.course, "course");
+    const category = readOptionalQueryText(req.query.category, "category");
+    const tag = readOptionalQueryText(req.query.tag, "tag");
 
     if (!userId) {
       return res.status(401).json({
@@ -163,8 +195,7 @@ router.get("/", authMiddleware, async (req, res) => {
       });
     }
 
-    const notes = await prisma.note.findMany({
-      where: {
+    const where = {
         AND: [
           buildVisibleNoteWhere(userId, scope),
           keyword
@@ -205,15 +236,13 @@ router.get("/", authMiddleware, async (req, res) => {
               }
             : {},
         ],
-      },
+      };
+    const [total, notes] = await Promise.all([
+      prisma.note.count({ where }),
+      prisma.note.findMany({
+      where,
       include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        author: { select: { id: true, name: true } },
         tags: {
           include: {
             tag: true,
@@ -224,14 +253,24 @@ router.get("/", authMiddleware, async (req, res) => {
             userId,
           },
         },
+        _count: { select: { favorites: true } },
       },
       orderBy: {
         createdAt: "desc",
       },
-    });
+      skip: pagination.skip,
+      take: pagination.pageSize,
+      }),
+    ]);
 
-    res.json(notes.map(formatNoteResponse));
+    res.json({
+      data: notes.map(formatNoteResponse),
+      meta: buildPaginationMeta(pagination.page, pagination.pageSize, total),
+    });
   } catch (error) {
+    if (error instanceof Error && (error.message.startsWith("page must") || error.message.includes("must be"))) {
+      return res.status(400).json({ message: error.message });
+    }
     console.error("Get notes error:", error);
     res.status(500).json({ message: "Failed to fetch notes" });
   }
@@ -246,13 +285,18 @@ router.post("/", authMiddleware, async (req, res) => {
       fileUrl,
       course,
       category,
-      views = 0,
-      likes = 0,
+      views,
+      likes,
       visibility,
       tags: rawTags,
     } = req.body;
 
-    if (!title || !course) {
+    if (
+      typeof title !== "string" ||
+      !title.trim() ||
+      typeof course !== "string" ||
+      !course.trim()
+    ) {
       return res.status(400).json({
         message: "Title and course are required",
       });
@@ -267,8 +311,13 @@ router.post("/", authMiddleware, async (req, res) => {
     }
 
     const tags = parseTagsInput(rawTags);
-    const normalizedFileUrl =
-      typeof fileUrl === "string" && fileUrl.trim() ? fileUrl.trim() : null;
+    const normalizedFileUrl = normalizeExternalFileUrl(fileUrl);
+
+    if (views !== undefined || likes !== undefined) {
+      return res.status(400).json({
+        message: "views and likes are managed by the server",
+      });
+    }
 
     const newNote = await prisma.note.create({
       data: {
@@ -286,8 +335,8 @@ router.post("/", authMiddleware, async (req, res) => {
         fileUrl: normalizedFileUrl,
         course,
         category,
-        views: Number(views) || 0,
-        likes: Number(likes) || 0,
+        views: 0,
+        likes: 0,
         visibility: normalizeVisibility(visibility),
         authorId: userId,
         tags: {
@@ -324,6 +373,9 @@ router.post("/", authMiddleware, async (req, res) => {
       note: formatNoteResponse(newNote),
     });
   } catch (error) {
+    if (error instanceof Error && /fileUrl|visibility/.test(error.message)) {
+      return res.status(400).json({ message: error.message });
+    }
     console.error("Create note error:", error);
     return res.status(500).json({
       message: "Failed to create note",
@@ -428,6 +480,9 @@ router.post(
         note,
       });
     } catch (error) {
+      if (error instanceof Error && error.message.includes("visibility")) {
+        return res.status(400).json({ message: error.message });
+      }
       if (error instanceof PdfParseError) {
         return res.status(error.statusCode).json({
           message: error.message,

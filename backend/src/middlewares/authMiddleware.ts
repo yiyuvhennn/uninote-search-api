@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { prisma } from "../lib/prisma";
 
-export const authMiddleware = (
+export const authMiddleware = async (
   req: Request,
   res: Response,
   next: NextFunction
@@ -15,25 +16,43 @@ export const authMiddleware = (
       });
     }
 
-    const token = authHeader.startsWith("Bearer ")
-      ? authHeader.split(" ")[1]
-      : null;
+    const [scheme, token] = authHeader.split(" ");
 
-    if (!token) {
+    if (scheme !== "Bearer" || !token) {
       return res.status(401).json({
         message: "Invalid token format",
       });
     }
 
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET as string
-    ) as {
-      userId: number;
-      email: string;
-    };
+    const secret = process.env.JWT_SECRET;
+    if (!secret) throw new Error("JWT secret is not configured");
 
-    req.user = decoded;
+    const decoded = jwt.verify(token, secret);
+    if (
+      typeof decoded === "string" ||
+      !Number.isInteger(decoded.userId) ||
+      typeof decoded.email !== "string"
+      || !Number.isInteger(decoded.tokenVersion)
+    ) {
+      throw new Error("Invalid token payload");
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { email: true, tokenVersion: true },
+    });
+    if (
+      !user ||
+      user.email !== decoded.email ||
+      user.tokenVersion !== decoded.tokenVersion
+    ) {
+      throw new Error("Token user is no longer valid");
+    }
+
+    req.user = {
+      userId: decoded.userId,
+      email: decoded.email,
+    };
 
     next();
   } catch (error) {

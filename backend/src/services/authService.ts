@@ -21,10 +21,18 @@ export const registerUser = async (
   email: string,
   password: string
 ) => {
-  if (!name || !email || !password) {
+  if (
+    typeof name !== "string" ||
+    name.trim().length < 2 ||
+    typeof email !== "string" ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
+    typeof password !== "string" ||
+    password.length < 6
+  ) {
     throw new Error("Name, email and password are required");
   }
 
+  name = name.trim();
   const normalizedEmail = email.trim().toLowerCase();
   const existingUser = await prisma.user.findUnique({
     where: { email: normalizedEmail },
@@ -51,7 +59,7 @@ export const registerUser = async (
 };
 
 export const loginUser = async (email: string, password: string) => {
-  if (!email || !password) {
+  if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
     throw new Error("Email and password are required");
   }
 
@@ -73,6 +81,7 @@ export const loginUser = async (email: string, password: string) => {
     {
       userId: user.id,
       email: user.email,
+      tokenVersion: user.tokenVersion,
     },
     process.env.JWT_SECRET as string,
     { expiresIn: "7d" }
@@ -95,7 +104,7 @@ function hashResetToken(token: string) {
 }
 
 export const requestPasswordReset = async (email: unknown) => {
-  const result: { message: string; resetUrl?: string } = {
+  const result: { message: string; resetUrl?: string; delivery?: "email" | "development-link" } = {
     message: "如果此 Email 已註冊，系統會提供密碼重設方式。",
   };
   if (typeof email !== "string" || !email.trim()) return result;
@@ -119,7 +128,15 @@ export const requestPasswordReset = async (email: unknown) => {
   const resetUrl = `${frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
   const emailSent = await sendPasswordResetEmail(user.email, resetUrl);
 
-  if (process.env.NODE_ENV !== "production" && !emailSent) result.resetUrl = resetUrl;
+  if (emailSent) {
+    result.delivery = "email";
+  } else if (process.env.NODE_ENV !== "production") {
+    result.delivery = "development-link";
+    result.resetUrl = resetUrl;
+  } else {
+    throw new Error("Email service is not configured");
+  }
+
   return result;
 };
 
@@ -143,7 +160,10 @@ export const resetPasswordWithToken = async (
 
   const hashedPassword = await bcrypt.hash(newPassword, 10);
   await prisma.$transaction([
-    prisma.user.update({ where: { id: resetRecord.userId }, data: { password: hashedPassword } }),
+    prisma.user.update({
+      where: { id: resetRecord.userId },
+      data: { password: hashedPassword, tokenVersion: { increment: 1 } },
+    }),
     prisma.passwordResetToken.update({ where: { id: resetRecord.id }, data: { usedAt: new Date() } }),
   ]);
   return { message: "密碼已更新，請使用新密碼登入。" };
@@ -218,6 +238,9 @@ export const changeCurrentUserPassword = async (
     where: { id: userId },
     data: {
       password: hashedPassword,
+      tokenVersion: {
+        increment: 1,
+      },
     },
   });
 

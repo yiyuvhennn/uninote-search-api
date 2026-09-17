@@ -1,6 +1,7 @@
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { prisma } from "../lib/prisma";
 
 function getUploadDirectory() {
   return path.resolve(process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads"));
@@ -12,11 +13,18 @@ export function parseStoredPdfReference(fileUrl: string | null | undefined) {
   const [, storageName, encodedOriginalName] = fileUrl.split(":");
   if (!storageName || !/^[a-f0-9-]+\.pdf$/i.test(storageName)) return null;
 
+  let originalName = "document.pdf";
+  try {
+    originalName = encodedOriginalName
+      ? decodeURIComponent(encodedOriginalName)
+      : originalName;
+  } catch {
+    return null;
+  }
+
   return {
     storageName,
-    originalName: encodedOriginalName
-      ? decodeURIComponent(encodedOriginalName)
-      : "document.pdf",
+    originalName,
     absolutePath: path.join(getUploadDirectory(), storageName),
   };
 }
@@ -33,6 +41,9 @@ export async function savePdfFile(buffer: Buffer, originalName: string) {
 export async function removeStoredPdf(fileUrl: string | null | undefined) {
   const reference = parseStoredPdfReference(fileUrl);
   if (!reference) return;
+
+  const remainingReferences = await prisma.note.count({ where: { fileUrl } });
+  if (remainingReferences > 0) return;
 
   try {
     await unlink(reference.absolutePath);

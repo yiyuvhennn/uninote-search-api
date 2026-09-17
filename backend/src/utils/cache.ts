@@ -4,6 +4,14 @@ type CacheItem<T> = {
 };
 
 const cache = new Map<string, CacheItem<unknown>>();
+const MAX_CACHE_ENTRIES = 500;
+
+function removeExpiredItems() {
+  const now = Date.now();
+  for (const [key, item] of cache) {
+    if (now > item.expiresAt) cache.delete(key);
+  }
+}
 
 export function getCache<T = unknown>(key: string): T | null {
   const item = cache.get(key);
@@ -25,6 +33,13 @@ export function setCache<T = unknown>(
   data: T,
   ttlSeconds = 60
 ) {
+  removeExpiredItems();
+  while (cache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey === undefined) break;
+    cache.delete(oldestKey);
+  }
+
   cache.set(key, {
     data,
     expiresAt: Date.now() + ttlSeconds * 1000,
